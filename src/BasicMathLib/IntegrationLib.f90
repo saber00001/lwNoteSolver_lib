@@ -28,23 +28,23 @@ implicit none
 contains
     
     !-------------------------------------------------------------------------
-    pure function integrateTrapezoid_f1(func,lo,up,tolin) result(integral)
+    pure function integrateTrapezoid_f1(func,lo,up,epsilon) result(integral)
     procedure(absf1)::                      func
     real(rp),intent(in)::                   lo,up
-    real(rp),intent(in),optional::          tolin
+    real(rp),intent(in),optional::          epsilon
     integer(ip)::                           n
-    real(rp)::                              integral0,integral,er,tol
+    real(rp)::                              integral0,integral,epsrun,eps
         
-        er  = 1.d100
-        n   = 101
-        tol = merge(tolin,IntegralDefaultTolerance,present(tolin))
+        epsrun  = 1.d100
+        n       = 101
+        eps     = merge(epsilon,GlobalEps,present(epsilon))
         
         integral = trapInt()
-        do while(er>max(integral*tol,tol).and.n<1e9)
-            integral0 = integral
-            n = n * 1.618d0     !golden
-            integral = trapInt()
-            er = abs(integral-integral0)
+        do while(epsrun>max(integral*eps,eps).and.n<1e9)
+            integral0   = integral
+            n           = n * 1.618d0     !golden
+            integral    = trapInt()
+            epsrun      = abs(integral-integral0)
         enddo
         
     contains
@@ -72,33 +72,32 @@ contains
     
     !---------refer to wiki(adaptive simpson's method) and 
     !https: //www.zhihu.com/question/30141678
-    pure function integrateAdaptiveSimpson_f1(f,lo,up,tolin) result(integral)
-    procedure(absf1)::              f
-    real(rp),intent(in)::           lo,up
-    real(rp),intent(in),optional::  tolin
-    real(rp)::                      integral,er,s,flo,fup
-        er  = merge(tolin,IntegralDefaultTolerance,present(tolin))
-        flo = f(lo)
-        fup = f(up)
-        s   = simpson_f1(f,lo,flo,up,fup)
-        integral = integrateAdaptiveSimpson_f1_rcs(f,lo,flo,up,fup,er,s,Integralmaxloop)
+    pure real(rp) function integrateAdaptiveSimpson_f1(f,lo,up,eps,maxLoop) result(integral)
+    procedure(absf1)::                  f
+    real(rp),intent(in)::               lo,up
+    real(rp),intent(in),optional::      eps
+    integer(ip),intent(in),optional::   maxLoop
+        integral = integrateAdaptiveSimpson_f1_rcs(f,lo,f(lo),up,f(up), &
+                                    simpson_f1(f,lo,f(lo),up,f(up)),    &
+                                    merge(eps,Globaleps,present(eps)),  &
+                                    merge(maxLoop,15_ip,present(maxLoop)))
     end function integrateAdaptiveSimpson_f1
     
-    !--
-    pure recursive function integrateAdaptiveSimpson_f1_rcs(f,lo,flo,up,fup,er,s,max) result(integral)
+    !--read flo and fup can reduce the computing, notice the <fmiddle>
+    pure recursive real(rp) function integrateAdaptiveSimpson_f1_rcs(f,lo,flo,up,fup,s,eps,max) result(integral)
     procedure(absf1)::          f
-    real(rp),intent(in)::       lo,flo,up,fup,er,s
+    real(rp),intent(in)::       lo,flo,up,fup,s,eps
     integer(ip),intent(in)::    max
-    real(rp)::                  integral,mi,fmi,l,r
-        mi = (lo+up)/2.d0
-        fmi= f(mi)
-        l = simpson_f1(f,lo,flo,mi,fmi)
-        r = simpson_f1(f,mi,fmi,up,fup)
-        if(max==0.or.abs(l+r-s)<=15.d0*er) then   !15.d0 comes from error analysis
+    real(rp)::                  mi,fmi,l,r
+        mi  = (lo+up)/2.d0
+        fmi = f(mi)
+        l   = simpson_f1(f,lo,flo,mi,fmi)
+        r   = simpson_f1(f,mi,fmi,up,fup)
+        if(max==0.or.abs(l+r-s)<=15.d0*eps) then   !15.d0 comes from error analysis
             integral = l+r+(l+r-s)/15.d0
         else
-            integral = integrateAdaptiveSimpson_f1_rcs(f,lo,flo,mi,fmi,er/2.d0,l,max-1)+ &
-                        integrateAdaptiveSimpson_f1_rcs(f,mi,fmi,up,fup,er/2.d0,r,max-1)
+            integral = integrateAdaptiveSimpson_f1_rcs(f,lo,flo,mi,fmi,l,eps/2.d0,max-1)+ &
+                        integrateAdaptiveSimpson_f1_rcs(f,mi,fmi,up,fup,r,eps/2.d0,max-1)
         endif
     end function integrateAdaptiveSimpson_f1_rcs
 

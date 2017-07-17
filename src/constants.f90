@@ -1,6 +1,7 @@
 !refer to h ttps://gcc.gnu.org/onlinedocs/gfortran/STRUCTURE-and-RECORD.html
 !period(.) is an old component access, and we use percent(%)
 module constants
+use,intrinsic:: ieee_arithmetic
 implicit none
     
     integer,parameter ::            isp = selected_int_kind(9)
@@ -35,23 +36,27 @@ implicit none
     real(rdp),parameter::           k_b     = 1.38067852d-23    !boltzmann constant
     real(rdp),parameter::           R_c     = 8.3144598d0       !gas constant   ( J * [K^-1] * [mol^-1] )
     real(rdp),parameter::           R_air   = 287.058d0         !specific gas constant for ideal gas ( J * [kg^-1] * [mol^-1] )
-    real(rdp),parameter::           GM_diatomic = 1.4d0         !specific gas
+    real(rdp),parameter::           gm_diatomic = 1.4d0         !specific gas
     
     !--------------------------------numeric constant
-    real(rdp),parameter::           minrdp  = -1.d50000         !-> -infinity
-    real(rsp),parameter::           minrsp  = minrdp
-    integer(isp),parameter::        Minisp  = -2147483648
-    integer(idp),parameter::        Minidp  = -9223372036854775808
+    integer(isp),parameter::        Minisp  = -2147483648_isp
+    integer(idp),parameter::        Minidp  = -9223372036854775808_idp
+    real(rdp),parameter::           minrdp  = transfer(-1_rdp,0._rdp)
+    real(rsp),parameter::           minrsp  = transfer(-1_rsp,0._rsp)
     
     
     !--------------------------------computing control parameters
     real(rdp),parameter::           gradLimitingk           = 1.2d0
-    real(rdp),parameter::           IntegralDefaultTolerance= 1.d-9
-    integer(ip),parameter::         Integralmaxloop         = 15
+    real(rdp),parameter::           GlobalEps               = 1.d-12
     
     
     !---here we offer two methods for disabling program [disablesub]&[disablenumber]
 !----------------------------------
+    !a special ==, because of its unlimited polymorphism, don't override the intrinsic ==
+    interface operator(.lweq.)
+        procedure:: anyiseq
+    end interface
+    
     !don't use module procedure refer to
     !h ttps://software.intel.com/en-us/forums/
     !intel-visual-fortran-compiler-for-windows/topic/721674
@@ -68,34 +73,39 @@ implicit none
     end interface disablenumber
     
     !--
-    interface inquirenumberstat
-        procedure::  inquirenumberstat_rsp
-        procedure::  inquirenumberstat_rdp
-        procedure::  inquirenumberstat_isp
-        procedure::  inquirenumberstat_idp
-    end interface inquirenumberstat
+    interface disabled_stat
+        procedure::  disabled_stat_rsp
+        procedure::  disabled_stat_rdp
+        procedure::  disabled_stat_isp
+        procedure::  disabled_stat_idp
+    end interface disabled_stat
     
-    !--
-    interface readkeyval
-        procedure::  readkeyival
-        procedure::  readkeyiar1val
-        procedure::  readkeyiar2val
-        procedure::  readkeycval
-        procedure::  readkeyrval
-    end interface readkeyval
-    
-    
+
     !--this is a basic procedure type, i put it here for the common use
     abstract interface
-        pure function absf1(x) result(y)
+        pure real(rp) function absf1(x) result(y)
         import:: rp
         real(rp),intent(in)::   x
-        real(rp)::              y
         end function absf1
     end interface
     
 contains
 
+    !--compare two scalar byte by byte
+    elemental logical(lp) function anyiseq(lhs,rhs) result(r)
+    class(*),intent(in)::               lhs,rhs
+    integer(1),dimension(sizeof(lhs)):: lb
+    integer(1),dimension(sizeof(rhs)):: rb
+    integer(ip)::                       i
+        r   = .false.
+        if(.not.same_type_as(lhs,rhs))  return
+        if(.not.size(lb)==size(rb))     return
+        lb  = transfer(lhs,mold=lb)
+        rb  = transfer(rhs,mold=rb)
+        r   = all(lb==rb)
+    end function anyiseq
+    
+    !-------------------------------
     pure subroutine disableprogram_
     integer(ip),dimension(:),allocatable:: n
         n(1) = 0
@@ -121,228 +131,30 @@ contains
         i = minidp
     end subroutine idp_nan
     
+    
     !--
-    elemental function inquirenumberstat_rsp(r) result(l)
+    elemental function disabled_stat_rsp(r) result(l)
     real(rsp),intent(in)::      r
     logical(lp)::               l
-        l = merge(.true. , .false. , r == minrsp)
-    end function inquirenumberstat_rsp
+        l = isnan(minrsp)
+    end function disabled_stat_rsp
     
-    elemental function inquirenumberstat_rdp(r) result(l)
+    elemental function disabled_stat_rdp(r) result(l)
     real(rdp),intent(in)::      r
     logical(lp)::               l
-        l = merge(.true. , .false. , r == minrdp)
-    end function inquirenumberstat_rdp
+        l = isnan(minrdp)
+    end function disabled_stat_rdp
     
-    elemental function inquirenumberstat_isp(i) result(l)
+    elemental function disabled_stat_isp(i) result(l)
     integer(isp),intent(in)::   i
     logical(lp)::               l
-        l = merge(.true. , .false. , i == minisp)
-    end function inquirenumberstat_isp
+        l = i == minisp
+    end function disabled_stat_isp
     
-    elemental function inquirenumberstat_idp(i) result(l)
+    elemental function disabled_stat_idp(i) result(l)
     integer(idp),intent(in)::   i
     logical(lp)::               l
-        l = merge(.true. , .false. , i == minidp)
-    end function inquirenumberstat_idp
-    
-    
-!-------------------------------------------------
-    !--
-    elemental subroutine lowerString(str)
-    character(*),intent(inout)::    str
-    integer::                       i,n
-        do i=1,len(str)
-            n = ichar(str(i:i))
-            if(n>=uppercase_a.and.n<=uppercase_z) then
-                str(i:i) = char ( ichar(str(i:i)) - uppercase_a + lowercase_a )
-            endif
-        enddo
-    end subroutine lowerString
-    
-    !--
-    elemental subroutine upperString(str)
-    character(*),intent(inout)::    str
-    integer::                       i,n
-        do i=1,len(str)
-            n = ichar(str(i:i))
-            if(n>=lowercase_a.and.n<=lowercase_z) then
-                str(i:i) = char ( ichar(str(i:i)) - lowercase_a + uppercase_a )
-            endif
-        enddo
-    end subroutine upperString
-    
-    !--
-    elemental function countsubstring(string,substring) result(n)
-    character(*),intent(in)::   string,substring
-    integer(ip)::               n,loc,ls,i
-        n   = 0
-        ls  = len(substring)
-        if( ls <= 0 .or. ls > len(string)) return
-
-        loc = 1
-        do while(.true.)
-            i = index(string(loc:),substring)
-            if(i > 0) then
-                n   = n + 1
-                loc = loc + i - 1 + ls
-            else
-                exit
-            endif
-        enddo
-    end function countsubstring
-    
-    
-    
-!-----------------------------------------------------------
-    !--
-    pure subroutine readkeycval(string,key,val)
-    character(*),intent(in)::   string,key
-    character(*),intent(out)::  val
-    integer(ip)::               st
-    
-        st = index(string,key)
-        
-        if(st == 0 ) then 
-            val = 'null'
-            return
-        endif
-        
-        st = st + len(key)
-        
-        !check '='
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='=') then
-            val = 'null'
-            return
-        endif
-        st = st + 1
-        
-        !st = index(string(st:),'=') + st
-        read(string(st:),*) val
-        
-    end subroutine readkeycval
-
-    !--    
-    pure subroutine readkeyrval(string,key,val)
-    character(*),intent(in)::   string,key
-    real(rp),intent(out)::      val
-    integer(ip)::               st
-        st = index(string,key)
-        if(st == 0 ) then 
-            call disablenumber(val)
-            return
-        endif
-        
-        st = st + len(key)
-        
-        !check '='
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='=') then
-            call disablenumber(val)
-            return
-        endif
-        st = st + 1
-        !st = index(string(st:),'=') + st
-        
-        read(string(st:),*) val
-        
-    end subroutine readkeyrval
-    
-    !--
-    pure subroutine readkeyival(string,key,val)
-    character(*),intent(in)::   string,key
-    integer(ip),intent(out)::   val
-    integer(ip)::               st
-    
-        st = index(string,key)
-        if(st == 0 ) then 
-            call disablenumber(val)
-            return
-        endif
-        
-        st = st + len(key)
-        
-        !check '='
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='=') then
-            call disablenumber(val)
-            return
-        endif
-        st = st + 1
-        
-        !st = index(string(st:),'=') + st
-        
-        read(string(st:),*) val
-        
-    end subroutine readkeyival
-    
-    !--
-    pure subroutine readkeyiar1val(string,key,val)
-    character(*),intent(in)::   string,key
-    integer(ip),dimension(:),intent(out)::   val
-    integer(ip)::               st,ed
-    
-        st = index(string,key)
-        if(st == 0 ) then 
-            call disablenumber(val)
-            return
-        endif
-        
-        st = st + len(key)
-        
-        !check '='
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='=') then
-            call disablenumber(val)
-            return
-        endif
-        st = st + 1
-
-        !check '('
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='(') then
-            call disablenumber(val)
-            return
-        end if
-        st = st + 1
-        
-        read(string(st:),*) val
-        
-    end subroutine readkeyiar1val
-    
-    !--
-    pure subroutine readkeyiar2val(string,key,val)
-    character(*),intent(in)::   string,key
-    integer(ip),dimension(:,:),intent(out)::   val
-    integer(ip)::               st,n,i
-    
-        st = index(string,key)
-        if(st == 0 ) then 
-            call disablenumber(val)
-            return
-        endif
-        
-        st = st + len(key)
-        st = verify(string(st:),' ') + st - 1
-        if(string(st:st)/='=') then
-            call disablenumber(val)
-            return
-        endif
-        st = st + 1
-        
-        n  = size(val,dim=2)
-        do i =1,n
-            st = verify(string(st:),' ') + st - 1
-            if(string(st:st)/='(') then
-                call disablenumber(val)
-                return
-            end if
-            st = st + 1
-            read(string(st:),*) val(:,i)
-            st = index(string(st:),')') + st
-        enddo
-        
-    end subroutine readkeyiar2val
+        l = i == minidp
+    end function disabled_stat_idp
     
 end module constants

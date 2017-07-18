@@ -47,8 +47,8 @@ implicit none
         !any data can be transfered to the integer by byte
         !only character and integer is considerred, integer supports the complex structure
         !and useful data is alway a big real array
-        integer(ip),dimension(:),allocatable::  key_
-        integer(ip),dimension(:),allocatable::  val_
+        integer(1),dimension(:),allocatable::  key_
+        integer(1),dimension(:),allocatable::  val_
         class(hashEntry),pointer::  next_   => null()
     contains
         !--
@@ -79,14 +79,18 @@ implicit none
         procedure::                 bid
         procedure::                 maxcol
         procedure::                 ncol
-        !procedure::                set
+        procedure::                 nkey
+        
+        !--
+        generic::                   set => set_sisi
+        procedure::                 set_sisi
     end type hashmap
 
     
 !--------------------------------------------------------------------
     interface hashfunc
         procedure:: javahash
-        procedure:: bkdrhash
+        !procedure:: bkdrhash
         procedure:: b3hs_hash_key_jenkins
     end interface hashfunc
 !--------------------------------------------------------------------
@@ -101,6 +105,8 @@ contains
     integer(ip) function depth_Entry(this) result(depth)
     class(hashEntry),target,intent(in)::    this
     class(hashEntry),pointer::              ptr
+        depth = 0
+        if(.not.allocated(this%key_)) return
         depth = 1;  ptr => this
         do while(associated(ptr%next_))
             depth = depth + 1
@@ -111,7 +117,7 @@ contains
     !--
     pure recursive subroutine set_Entry(this,key,val)
     class(hashEntry),intent(inout)::        this
-    integer(ip),dimension(:),intent(in)::   key,val
+    integer(1),dimension(:),intent(in)::    key,val
         if(.not.allocated(this%key_)) then
             allocate(this%key_,source=key)
             allocate(this%val_,source=val)
@@ -129,8 +135,8 @@ contains
     !--
     recursive function get_Entry(this,key) result(val)
     class(hashEntry),target,intent(in)::    this
-    integer(ip),dimension(:),intent(in)::   key
-    integer(ip),dimension(:),pointer::      val
+    integer(1),dimension(:),intent(in)::    key
+    integer(1),dimension(:),pointer::       val
         if(.not.allocated(this%key_)) then
             val => null()
         elseif(all(this%key_==key)) then
@@ -143,7 +149,7 @@ contains
     !--not allocated key, no next
     pure recursive subroutine delet_Entry(this,key,previous)
     class(hashEntry),intent(inout)::            this
-    integer(ip),dimension(:),intent(in)::       key
+    integer(1),dimension(:),intent(in)::        key
     class(hashEntry),optional,intent(inout)::   previous
     class(hashEntry),pointer::                  tp
         !means the origrin Entry in Buckets
@@ -183,7 +189,7 @@ contains
     !--
     pure logical(lp) function iseq_Entry(this,key,val) result(is)
     class(hashEntry),intent(in)::           this
-    integer(ip),dimension(:),intent(in)::   key,val
+    integer(1),dimension(:),intent(in)::    key,val
         is = .false.
         if(.not.allocated(this%key_))   return
         if(size(key)/=size(this%key_))  return
@@ -222,71 +228,76 @@ contains
     
     !-----------------------------------
     pure integer(ip) function bid(this,key)
-    class(hashmap),intent(in)::     this
-    integer(isp),intent(in)::       key
-        !no matter about the sign of key, see <modulo>
-        bid = modulo(hashfunc(key),int(this%mapsize(),kind=isp)) + 1_ip
+    class(hashmap),intent(in)::             this
+    integer(1),dimension(:),intent(in)::    key
+        bid = modulo(hashfunc(key),this%mapsize()) + 1
     end function bid
     
     pure integer(ip) function maxcol(this) result(mc)
     class(hashmap),intent(in)::     this
-    integer(ip)::                   i,ic
-        mc = 0_ip
-        do i=1_ip,this%mapsize()
-            ic = this%buckets_(i)%depth() - 1_ip
-            if(ic>mc) mc = ic
+    integer(ip)::                   i,d
+        mc = 0
+        do i=1,this%mapsize()
+            d = this%buckets_(i)%depth()
+            if(d>max(mc,2)) mc = d - 1
         enddo
     end function maxcol
     
     pure integer(ip) function ncol(this) result(nc)
     class(hashmap),intent(in)::     this
-    integer(ip)::                   i,ic
-        nc = 0_ip
-        do i=1_ip,this%mapsize()
-            ic = this%buckets_(i)%depth() - 1_ip
-            nc = nc + ic
+    integer(ip)::                   i,d
+        nc = 0
+        do i=1,this%mapsize()
+            d = this%buckets_(i)%depth()
+            if(d<2) cycle
+            nc = nc + d - 1
         enddo
     end function ncol
-    !pure subroutine set(this,key,val)
-    !
-    !
-    !end subroutine set
     
+    pure integer(ip) function nkey(this) result(nk)
+    class(hashmap),intent(in)::     this
+    integer(ip)::                   i
+        nk = 0
+        do i=1,this%mapsize()
+            nk = nk + this%buckets_(i)%depth()
+        enddo
+    end function nkey
     
-    
-    
-    
-    
-    
-    
-    
+    !--
+    pure subroutine set_sisi(this,key,val)
+    class(hashmap),intent(inout)::  this
+    integer(ip),intent(in)::        key,val
+    integer(1),dimension(sizeof(key)):: tkey
+    integer(1),dimension(sizeof(val)):: tval
+        tkey = transfer(key,tkey)
+        tval = transfer(val,tval)
+        call this%buckets_( this%bid(tkey) )%set(tkey,tval)
+    end subroutine set_sisi
     
     
     
     
 
+    
 !--------------------------------------------------------------
 !space for different hash function
 !---------------------------------------------------------------
     !https://www.zhihu.com/question/51784530
     pure integer(isp) function javahash(key)
-    integer(ip),intent(in)::            key
-    character(len=sizeof(key),kind=1):: ckey
-        ckey = transfer(key,mold=ckey)
-        javahash = hashfunc(adjustl(ckey))
-        javahash = ieor(key,ieor(ishft(key,-20),ishft(key,-12)))
+    integer(1),dimension(:),intent(in)::    key
+        javahash = bkdrhash(key)
+        javahash = ieor(javahash,ieor(ishft(javahash,-20),ishft(javahash,-12)))
         javahash = ieor(ieor(javahash,ishft(javahash,-7)),ishft(javahash,-4))
     end function javahash
     
     !https://www.zhihu.com/question/20507188
     pure integer(isp) function bkdrhash(key)
-    character(*),intent(in)::   key
-    integer(isp),parameter::    s = 131
-    integer(isp)::              n,bt,i
-        n = len_trim(key)
+    integer(1),dimension(:),intent(in)::key
+    integer(isp),parameter::            s = 131
+    integer(isp)::                      n,i
+        n = size(key); bkdrhash = 0_isp
         do i=1,n
-            bt = ichar(key(i:i))
-            bkdrhash = bkdrhash*s + bt
+            bkdrhash = bkdrhash * s + key(i)
         enddo
         bkdrhash = iand(bkdrhash,z'7fffffff')
     end function bkdrhash

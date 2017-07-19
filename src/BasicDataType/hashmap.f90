@@ -31,24 +31,22 @@ implicit none
     public:: hashfunc
     
     !----------------------------------------------------------------------------------------------------
-    integer(isp),parameter::        MapSize(28) = (/                    &
+    integer(isp),parameter::    MapSizeRepository(28) = (/              &
             17,         37,         79,         163,        331,        &
             673,        1361,       2729,       5471,       10949,      &
             21911,      43853,      87719,      175447,     350899,     &
             701819,     1403641,    2807303,    5614657,    11229331,   &
             22458671,   44917381,   89834777,   179669557,  359339171,  &
             718678369,  1437356741, 2147483647/)
-            
-    integer(isp),parameter::        dByte = sizeof(0_ip)
-    
+
 !--------------------------------------------------------------------
     type:: hashEntry
         private
-        !any data can be transfered to the integer by byte
-        !only character and integer is considerred, integer supports the complex structure
-        !and useful data is alway a big real array
-        integer(1),dimension(:),allocatable::  key_
-        integer(1),dimension(:),allocatable::  val_
+        !key is stored by encoded Byte Array, don't care about its type
+        integer(1),dimension(:),&
+        allocatable::               key_
+        class(*),allocatable::      val_
+        !--
         class(hashEntry),pointer::  next_   => null()
     contains
         !--
@@ -69,28 +67,37 @@ implicit none
 !--------------------------------------------------------------------
     type:: hashmap
         private
-        class(hashEntry),dimension(:),allocatable::  buckets_
+        class(hashEntry),dimension(:),allocatable:: buckets_
+        class(hashEntry),pointer::                  iterEntry_ => null()
     contains
         generic::                   init    => init_n
         procedure,private::         init_n
         !-----------
         procedure::                 selectMapSize
-        procedure::                 mapsize => mapsize_f
+        procedure::                 mapsize
         procedure::                 bid
         procedure::                 maxcol
         procedure::                 ncol
         procedure::                 nkey
         
         !--
-        generic::                   set => set_sisi
-        procedure::                 set_sisi
+        generic::                   set => set_si
+        procedure::                 set_si
+        
+        !--
+        generic::                   get => get_si,get_iter
+        procedure::                 get_si
+        
+        !--
+        procedure::                 get_iter
+        procedure::                 iterEntry
+        procedure::                 startIterEntry
     end type hashmap
 
     
 !--------------------------------------------------------------------
     interface hashfunc
         procedure:: javahash
-        !procedure:: bkdrhash
         procedure:: b3hs_hash_key_jenkins
     end interface hashfunc
 !--------------------------------------------------------------------
@@ -117,7 +124,8 @@ contains
     !--
     pure recursive subroutine set_Entry(this,key,val)
     class(hashEntry),intent(inout)::        this
-    integer(1),dimension(:),intent(in)::    key,val
+    integer(1),dimension(:),intent(in)::    key
+    class(*),intent(in)::                   val
         if(.not.allocated(this%key_)) then
             allocate(this%key_,source=key)
             allocate(this%val_,source=val)
@@ -136,7 +144,7 @@ contains
     recursive function get_Entry(this,key) result(val)
     class(hashEntry),target,intent(in)::    this
     integer(1),dimension(:),intent(in)::    key
-    integer(1),dimension(:),pointer::       val
+    class(*),pointer::                      val
         if(.not.allocated(this%key_)) then
             val => null()
         elseif(all(this%key_==key)) then
@@ -152,18 +160,19 @@ contains
     integer(1),dimension(:),intent(in)::        key
     class(hashEntry),optional,intent(inout)::   previous
     class(hashEntry),pointer::                  tp
-        !means the origrin Entry in Buckets
+        !means the start Entry in Buckets
         if(.not.allocated(this%key_)) return
         if(all(this%key_ == key)) then  !need to delet
             if(present(previous)) then  !means it's the son list
                 tp => previous%next_
                 previous%next_ => this%next_
                 deallocate(tp)
-            else! means origin Entry in Buckets
+            else! means start Entry in Buckets
                 if(associated(this%next_)) then
                     tp => this%next_
+                    deallocate(this%key_,this%val_)
+                    allocate(this%val_,source=tp%val_)
                     this%key_   = tp%key_
-                    this%val_   = tp%val_
                     this%next_  => tp%next_
                     deallocate(tp)
                 else
@@ -189,14 +198,13 @@ contains
     !--
     pure logical(lp) function iseq_Entry(this,key,val) result(is)
     class(hashEntry),intent(in)::           this
-    integer(1),dimension(:),intent(in)::    key,val
+    integer(1),dimension(:),intent(in)::    key
+    class(*),intent(in)::                   val
         is = .false.
         if(.not.allocated(this%key_))   return
         if(size(key)/=size(this%key_))  return
-        if(size(val)/=size(this%val_))  return
         if(.not.all(key==this%key_))    return
-        if(.not.all(val==this%val_))    return
-        is = .true.
+        is = this%val_ .lweq. val
     end function iseq_Entry
 
     
@@ -211,19 +219,19 @@ contains
     end subroutine init_n
 
     !---------------------------------
-    pure integer(ip) function mapsize_f(this)
+    pure integer(ip) function mapsize(this)
     class(hashmap),intent(in)::     this
-        mapsize_f = size(this%buckets_)    
-    end function mapsize_f
+        mapsize = size(this%buckets_)    
+    end function mapsize
     
     pure integer(ip) function selectMapSize(this,n)
     class(hashmap),intent(in)::     this
     integer(ip),intent(in)::        n
     integer(ip)::                   i
         do i=1,28
-            if(mapsize(i)>n) exit
+            if(mapsizeRepository(i)>n) exit
         enddo
-        selectMapSize = mapsize(i)
+        selectMapSize = mapsizeRepository(i)
     end function selectMapSize
     
     !-----------------------------------
@@ -234,8 +242,8 @@ contains
     end function bid
     
     pure integer(ip) function maxcol(this) result(mc)
-    class(hashmap),intent(in)::     this
-    integer(ip)::                   i,d
+    class(hashmap),intent(in)::             this
+    integer(ip)::                           i,d
         mc = 0
         do i=1,this%mapsize()
             d = this%buckets_(i)%depth()
@@ -244,8 +252,8 @@ contains
     end function maxcol
     
     pure integer(ip) function ncol(this) result(nc)
-    class(hashmap),intent(in)::     this
-    integer(ip)::                   i,d
+    class(hashmap),intent(in)::             this
+    integer(ip)::                           i,d
         nc = 0
         do i=1,this%mapsize()
             d = this%buckets_(i)%depth()
@@ -254,9 +262,10 @@ contains
         enddo
     end function ncol
     
+    !--
     pure integer(ip) function nkey(this) result(nk)
-    class(hashmap),intent(in)::     this
-    integer(ip)::                   i
+    class(hashmap),intent(in)::             this
+    integer(ip)::                           i
         nk = 0
         do i=1,this%mapsize()
             nk = nk + this%buckets_(i)%depth()
@@ -264,20 +273,67 @@ contains
     end function nkey
     
     !--
-    pure subroutine set_sisi(this,key,val)
-    class(hashmap),intent(inout)::  this
-    integer(ip),intent(in)::        key,val
-    integer(1),dimension(sizeof(key)):: tkey
-    integer(1),dimension(sizeof(val)):: tval
-        tkey = transfer(key,tkey)
-        tval = transfer(val,tval)
-        call this%buckets_( this%bid(tkey) )%set(tkey,tval)
-    end subroutine set_sisi
+    pure subroutine set_si(this,key,val)
+    class(hashmap),intent(inout)::          this
+    integer(ip),intent(in)::                key
+    class(*),intent(in)::                   val
+    integer(1),dimension(sizeof(key))::     tkey
+        tkey = transfer(key,mold=tkey)
+        call this%buckets_( this%bid(tkey) )%set(tkey,val)
+    end subroutine set_si
     
+    !--
+    function get_si(this,key)
+    class(hashmap),target,intent(in)::      this
+    integer(ip),intent(in)::                key
+    integer(1),dimension(sizeof(key))::     tkey
+    class(*),pointer::                      get_si
+        tkey = transfer(key,mold=tkey)
+        get_si => this%buckets_( this%bid(tkey) )%get(tkey)
+    end function get_si
     
+    !-------------------------------------------
+    function get_iter(this)
+    class(hashmap),target,intent(in)::      this
+    class(*),pointer::                      get_iter
+        if(associated(this%iterEntry_)) then
+            get_iter => this%iterEntry_%val_
+        else
+            get_iter => null()
+        endif
+    end function get_iter
     
+    !--
+    pure subroutine startIterEntry(this)
+    class(hashmap),target,intent(inout)::   this
+    integer(ip)::                           i
+        do i=1,this%mapsize()
+            if(allocated(this%buckets_(i)%key_)) then
+                this%iterEntry_ => this%buckets_(i)
+                return
+            endif
+        enddo
+        this%iterEntry_ => null()
+    end subroutine startIterEntry
     
-
+    !--
+    pure subroutine IterEntry(this)
+    class(hashmap),target,intent(inout)::   this
+    integer(ip)::                           i,ic
+        if(associated(this%iterEntry_%next_)) then
+            this%iterEntry_ => this%iterEntry_%next_
+            return
+        else
+            ic = this%bid(this%iterEntry_%key_)
+            do i=ic+1,this%mapsize()
+                if(allocated(this%buckets_(i)%key_)) then
+                    this%iterEntry_ => this%buckets_(i)
+                    return
+                endif
+            enddo
+        endif
+        this%iterEntry_ => null()
+    end subroutine iterEntry
     
 !--------------------------------------------------------------
 !space for different hash function

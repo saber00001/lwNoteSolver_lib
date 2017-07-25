@@ -1,5 +1,4 @@
-!for now i just need a integer hashmap
-!i will refer to:
+!refer to:
 !https://en.wikipedia.org/wiki/List_of_hash_functions
 !src\OpenFOAM\primitives\hashes\Hasher // 
 !https://github.com/vkandy/jenkins-hash-java/blob/master/src/JenkinsHash.java
@@ -49,18 +48,14 @@ implicit none
         !--
         class(hashEntry),pointer::  next_   => null()
     contains
-        !--
+    
         procedure::                 depth   => depth_Entry
-        !--
         procedure::                 delet   => delet_Entry
-        !--
         procedure::                 clear   => clear_Entry
-        !--
         procedure::                 set     => set_Entry
-        !--
         procedure::                 get     => get_Entry
-        !--
         procedure::                 iseq    => iseq_Entry
+        
     end type hashEntry
     
     
@@ -70,8 +65,10 @@ implicit none
         class(hashEntry),dimension(:),allocatable:: buckets_
         class(hashEntry),pointer::                  iterEntry_ => null()
     contains
+    
         generic::                   init    => init_n
         procedure,private::         init_n
+        
         !-----------
         procedure::                 selectMapSize
         procedure::                 mapsize
@@ -83,15 +80,17 @@ implicit none
         !--
         generic::                   set => set_si
         procedure::                 set_si
-        
         !--
         generic::                   get => get_si,get_iter
         procedure::                 get_si
-        
-        !--
+
+        !----
         procedure::                 get_iter
         procedure::                 iterEntry
         procedure::                 startIterEntry
+        
+        !----
+        final::                     f_hashmap
     end type hashmap
 
     
@@ -334,6 +333,25 @@ contains
         endif
         this%iterEntry_ => null()
     end subroutine iterEntry
+    
+    
+    
+    !--------------------
+    pure subroutine f_hashmap(this)
+    type(hashmap),intent(inout)::   this
+    integer(ip)::                   i
+        do i=1,this%mapsize()
+            call this%buckets_(i)%clear()
+        enddo
+    end subroutine f_hashmap
+    !----------------------
+    
+    
+    
+    
+    
+    
+    
     
 !--------------------------------------------------------------
 !space for different hash function

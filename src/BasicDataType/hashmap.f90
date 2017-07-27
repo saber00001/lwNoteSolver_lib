@@ -316,7 +316,7 @@ contains
     end subroutine startIterEntry
     
     !--
-    pure subroutine IterEntry(this)
+    elemental subroutine IterEntry(this)
     class(hashmap),target,intent(inout)::   this
     integer(ip)::                           i,ic
         if(associated(this%iterEntry_%next_)) then

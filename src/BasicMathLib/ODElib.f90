@@ -10,10 +10,9 @@ implicit none
     
     private
     public::    ODEeuler
-    public::    ODERK
-    public::    absdydx
+    public::    ODERK4
     
-    
+
 !-------------------------------------------------------------------    
     interface ODEeuler
         procedure:: ODEeuler_1step
@@ -21,7 +20,7 @@ implicit none
     end interface
     
 !-------------------------------------------------------------------   
-    interface ODERK
+    interface ODERK4
         procedure:: ODERK_TVD4_1step
         procedure:: ODERK_TVD4_nstep
     end interface
@@ -67,7 +66,7 @@ contains
          k2 = dydx(x0 + 0.5d0*dx,y0 + 0.5d0*dx*k1)
          k3 = dydx(x0 + 0.5d0*dx,y0 + 0.5d0*dx*k2)
          k4 = dydx(x0 + dx,y0 + dx*k3)
-         y = y0 + (1/6.d0)*dx*(k1 + 2*k2 + 2*k3 + k4)      
+         y = y0 + (1.d0/6.d0)*dx*(k1 + 2.d0*k2 + 2.d0*k3 + k4)      
          ! use the weighted average of the slopes of four points to estimate the real slope
      end function ODERK_TVD4_1step
 

@@ -27,7 +27,7 @@ implicit none
 
 !-------------------------------------------------------------------
     interface odeSystemRK4
-        procedure:: odeRK4_TVD_1step
+        procedure:: odeSystemRK4_TVD_1step
     end interface odeSystemRK4
     
     

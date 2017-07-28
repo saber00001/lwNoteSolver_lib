@@ -21,7 +21,7 @@ implicit none
     private
     public:: vector,vector2d,vector3d
     public:: operator(+),operator(-),operator(*),operator(/),operator(**)
-    public:: operator(.cross.),operator(.inner.),operator(.outer.),operator(.dot.)
+    public:: operator(.cp.),operator(.ip.),operator(.op.)
     public:: assignment(=)
     
     
@@ -95,21 +95,20 @@ implicit none
     end type vector
 
     
-!----a specified vector
-    type,extends(vector)::  vector2d
+!for fast operation, the deriaved type should be pre-described
+    type::  vector2d
+        private
+        real(rp)::          x_,y_
     contains
-        !sp init
-        procedure::         init_movealloc   =>      init_movealloc_2d
         !generic init
-        generic::           init        =>      init_null   !,init_scalvals
+        generic::           init        =>      init_null,  &
+                                                init_vals,  &
+                                                init_vector,&
+                                                init_scalar
         procedure,private:: init_null   =>      init_null_2d
-        procedure,private:: init_dim    =>      init_dim_2d
-        procedure,private:: init_ds     =>      init_ds_2d
         procedure,private:: init_vals   =>      init_vals_2d
+        procedure,private:: init_scalar =>      init_scalar_2d
         procedure,private:: init_vector =>      init_vector_2d
-        
-        !lead to init conflict of init_dim/init_dim_2d, 
-        !procedure,private:: init_scalar =>      init_scalar_2d
         
         !menber function
         procedure::         x
@@ -118,10 +117,13 @@ implicit none
     
 !----a specified vector
     type,extends(vector2d)::  vector3d
+        private
+        real(rp)::          z_
     contains
         !change the init_null, change the other inits
         procedure,private:: init_null   =>      init_null_3d
-        
+        procedure,private:: init_vals   =>      init_vals_3d
+        procedure,private:: init_scalar =>      init_scalar_3d
         !menber function
         procedure::         z
     end type vector3d
@@ -133,15 +135,17 @@ implicit none
         procedure::     vplus
         procedure::     vsplus
         procedure::     svplus
+        !--
         procedure::     v2plus
         procedure::     v3plus
     end interface
     
     interface operator(-)
         procedure::     vminus
+        procedure::     negv
+        !--
         procedure::     v2minus
         procedure::     v3minus
-        procedure::     negv
         procedure::     negv2
         procedure::     negv3
     end interface
@@ -149,9 +153,10 @@ implicit none
     interface operator(*)
         procedure::     vproduct
         procedure::     svproduct
+        procedure::     vsproduct
+        !--
         procedure::     sv2product
         procedure::     sv3product
-        procedure::     vsproduct
         procedure::     v2sproduct
         procedure::     v3sproduct
     end interface
@@ -160,6 +165,7 @@ implicit none
         procedure::     vdivide
         procedure::     vsdivide
         procedure::     svdivide
+        !--
         procedure::     v2sdivide
         procedure::     v3sdivide
     end interface
@@ -170,28 +176,27 @@ implicit none
         procedure::     vi8pow
     end interface
     
-    interface operator(.cross.)
-        procedure::     v2cross
-        procedure::     v3cross
+    interface operator(.cp.)
+        procedure::     crossProduct2
+        procedure::     crossProduct3
     end interface
     
-    interface operator(.inner.) !inner product is usually called dot_product
-        procedure::     vdot
+    interface operator(.ip.) !inner product is usually called dot_product
+        procedure::     innerProduct
     end interface
     
-    interface operator(.outer.)
-        procedure::     vouter
-    end interface
-    
-    interface operator(.dot.)
-        procedure::     vdot
+    interface operator(.op.)
+        procedure::     outerProduct
     end interface
     
     !------------------------------
     interface assignment(=)
         procedure::     veqvals
-        procedure::     veqvals2    !sp for v2d&v3d
         procedure::     veqscalvals
+        !--
+        procedure::     vdeqvals
+        procedure::     v2eqv3
+        procedure::     v3eqv2
     end interface
     
 !-----
@@ -365,7 +370,7 @@ contains
     elemental function magSqr(this)
     class(vector),intent(in)::          this
     real(rp)::                          magSqr
-        magSqr = this .dot. this
+        magSqr = this .ip. this
     end function magSqr
     
     !&&
@@ -387,51 +392,28 @@ contains
     
 !--------------------------------------    
 !vector2d override part 
-!-------------------------------------
-    !--
-    pure subroutine init_movealloc_2d(this,vals)
-    class(vector2d),intent(out)::   this
-    real(rp),dimension(:),allocatable,intent(inout):: vals
-        call this%init()
-        this%vc(:) = vals
-    end subroutine init_movealloc_2d
-    
+!-------------------------------------    
     !&&
     elemental subroutine init_null_2d(this)
     class(vector2d),intent(out)::       this
-        allocate(this%vc(2))
-        this%vc = zero
+        this%x_ = 0.d0
+        this%y_ = 0.d0
     end subroutine init_null_2d
     
-    elemental subroutine init_ds_2d(this,n,s)
-    class(vector2d),intent(out)::       this
-    integer(ip),intent(in)::            n
-    real(rp),intent(in)::               s
-        call this%init()
-        this%vc = s
-    end subroutine init_ds_2d
-    
-    !&& leading error
-    elemental subroutine init_scalvals_2d(this,s)
-    class(vector2d),intent(out)::       this
-    real(rp),intent(in)::               s
-        call this%init()
-        this%vc = s
-    end subroutine init_scalvals_2d
-    
     !&&
-    elemental subroutine init_dim_2d(this,n)
+    elemental subroutine init_scalar_2d(this,s)
     class(vector2d),intent(out)::       this
-    integer(ip),intent(in)::            n
-        call this%init()
-    end subroutine init_dim_2d
+    real(rp),intent(in)::               s
+        this%x_ = s
+        this%y_ = s
+    end subroutine init_scalar_2d
     
     !&&
     pure subroutine init_vals_2d(this,vals)
     class(vector2d),intent(out)::       this
     real(rp),dimension(:),intent(in)::  vals
-        call this%init()
-        this%vc(:) = vals
+        this%x_ = vals(1)
+        this%y_ = vals(2)
     end subroutine init_vals_2d
     
     !&&
@@ -445,14 +427,14 @@ contains
     elemental function x(this)
     class(vector2d),intent(in)::        this
     real(rp)::                          x
-        x = this%vc(1)
+        x = this%x_
     end function x
     
     !&&
     elemental function y(this)
     class(vector2d),intent(in)::        this
     real(rp)::                          y
-        y = this%vc(2)
+        y = this%y_
     end function y
     
     
@@ -462,21 +444,32 @@ contains
     !&&
     elemental subroutine init_null_3d(this)
     class(vector3d),intent(out)::       this
-        allocate(this%vc(3))
-        this%vc = zero
+        call this%vector2d%init()
+        this%z_ = 0.d0
     end subroutine init_null_3d
 
+    !&&
+    elemental subroutine init_scalar_3d(this,s)
+    class(vector3d),intent(out)::       this
+    real(rp),intent(in)::               s
+        call this%vector2d%init(s)
+        this%z_ = s
+    end subroutine init_scalar_3d
+    
+    !&&
+    pure subroutine init_vals_3d(this,vals)
+    class(vector3d),intent(out)::       this
+    real(rp),dimension(:),intent(in)::  vals
+        call this%vector2d%init(vals)
+        this%z_ = vals(3)
+    end subroutine init_vals_3d
+    
     !&&
     elemental function z(this)
     class(vector3d),intent(in)::        this
     real(rp)::                          z
-        z = this%vc(3)
+        z = this%z_
     end function z
-      
-
-    
-    
-    
 
     
 !--------------------------------------    
@@ -504,13 +497,16 @@ contains
     elemental function v2plus(lhs,rhs) result(vvp)
     type(vector2d),intent(in):: lhs,rhs
     type(vector2d)::            vvp
-        vvp%vc = lhs%vc+rhs%vc
+        vvp%x_ = lhs%x_ + rhs%x_
+        vvp%y_ = lhs%y_ + rhs%y_
     end function v2plus
     !--
     elemental function v3plus(lhs,rhs) result(vvp)
     type(vector3d),intent(in):: lhs,rhs
     type(vector3d)::            vvp
-        vvp%vc = lhs%vc+rhs%vc
+        vvp%x_ = lhs%x_ + rhs%x_
+        vvp%y_ = lhs%y_ + rhs%y_
+        vvp%z_ = lhs%z_ + rhs%z_
     end function v3plus
     !--
     !if dim of lhs less than rhs, it leads to error
@@ -524,14 +520,17 @@ contains
     elemental function v2minus(lhs,rhs) result(vvm)
     type(vector2d),intent(in):: lhs,rhs
     type(vector2d)::            vvm
-        vvm%vc  =   lhs%vc - rhs%vc 
+        vvm%x_ = lhs%x_ - rhs%x_
+        vvm%y_ = lhs%y_ - rhs%y_
     end function v2minus
     !--
     !if dim of lhs less than rhs, it leads to error
     elemental function v3minus(lhs,rhs) result(vvm)
     type(vector3d),intent(in):: lhs,rhs
     type(vector3d)::            vvm
-        vvm%vc  =   lhs%vc - rhs%vc 
+        vvm%x_ = lhs%x_ - rhs%x_
+        vvm%y_ = lhs%y_ - rhs%y_
+        vvm%z_ = lhs%z_ - rhs%z_
     end function v3minus
     !--
     elemental function negv(rhs) result(v)
@@ -543,24 +542,26 @@ contains
     elemental function negv2(rhs) result(v)
     type(vector2d),intent(in):: rhs
     type(vector2d)::            v
-        v%vc = -rhs%vc
+        v%x_ = -rhs%x_
+        v%y_ = -rhs%y_
     end function negv2
     !--
     elemental function negv3(rhs) result(v)
     type(vector3d),intent(in):: rhs
     type(vector3d)::            v
-        v%vc = -rhs%vc
+        v%x_ = -rhs%x_
+        v%y_ = -rhs%y_
+        v%z_ = -rhs%z_
     end function negv3
     
     !--
-    elemental function vdot(lhs,rhs) result(vvd)
-    class(vector),intent(in)::  lhs,rhs
-    real(rp)::                  vvd
-        vvd =  sum(lhs%vc * rhs%vc)
-    end function vdot
+    elemental real(rp) function innerProduct(lhs,rhs) result(p)
+    class(vector),intent(in)::          lhs,rhs
+        p = sum(lhs%vc * rhs%vc)
+    end function innerProduct
     
     !--
-    pure function vouter(lhs,rhs) result(ts)
+    pure function outerProduct(lhs,rhs) result(ts)
     class(vector),intent(in)::          lhs,rhs
     real(rp),dimension(:,:),allocatable::ts
     integer(ip)::                       i,j
@@ -570,26 +571,26 @@ contains
                 ts(i,j) = lhs%vc(i) * rhs%vc(j)
             enddo
         enddo
-    end function vouter
+    end function outerProduct
     
     !--
-    elemental function v2cross(lhs,rhs) result(vvcr)
+    elemental function crossProduct2(lhs,rhs) result(vvcr)
     type(vector2d),intent(in)::         lhs
     type(vector2d),intent(in)::         rhs
     real(rp)::                          vvcr
-        vvcr = lhs%vc(1) * rhs%vc(2) - lhs%vc(2)*rhs%vc(1)
-    end function v2cross
+        vvcr = lhs%x_ * rhs%y_ - lhs%y_ * rhs%x_
+    end function crossProduct2
     
     !--
-    elemental function v3cross(lhs,rhs) result(vvcr)
+    elemental function crossProduct3(lhs,rhs) result(vvcr)
     type(vector3d),intent(in)::         lhs
     type(vector3d),intent(in)::         rhs
     type(vector3d)::                    vvcr
         call vvcr%init()
-        vvcr%vc(1)  =   lhs%vc(2) * rhs%vc(3)   -   lhs%vc(3) * rhs%vc(2)
-        vvcr%vc(2)  =   lhs%vc(3) * rhs%vc(1)   -   lhs%vc(1) * rhs%vc(3)
-        vvcr%vc(3)  =   lhs%vc(1) * rhs%vc(2)   -   lhs%vc(2) * rhs%vc(1)
-    end function v3cross
+        vvcr%x_  =   lhs%y_ * rhs%z_   -   lhs%z_ * rhs%y_
+        vvcr%y_  =   lhs%z_ * rhs%x_   -   lhs%x_ * rhs%z_
+        vvcr%z_  =   lhs%x_ * rhs%y_   -   lhs%y_ * rhs%x_
+    end function crossProduct3
     
     !--
     elemental type(vector) function vproduct(lhs,rhs) result(vr)
@@ -610,7 +611,8 @@ contains
     real(rp),intent(in)::               lhs
     type(vector2d),intent(in)::         rhs
     type(vector2d)::                    vr
-        vr%vc = lhs * rhs%vc
+        vr%x_ = lhs * rhs%x_
+        vr%y_ = lhs * rhs%y_
     end function sv2product
     
     !--
@@ -618,7 +620,9 @@ contains
     real(rp),intent(in)::               lhs
     type(vector3d),intent(in)::         rhs
     type(vector3d)::                    vr
-        vr%vc = lhs * rhs%vc
+        vr%x_ = lhs * rhs%x_
+        vr%y_ = lhs * rhs%y_
+        vr%z_ = lhs * rhs%z_
     end function sv3product
     
     !--
@@ -634,7 +638,7 @@ contains
     type(vector2d),intent(in)::         lhs
     real(rp),intent(in)::               rhs
     type(vector2d)::                    vr
-        vr%vc = rhs * lhs%vc
+        vr = rhs * lhs
     end function v2sproduct
     
     !--
@@ -642,7 +646,7 @@ contains
     type(vector3d),intent(in)::         lhs
     real(rp),intent(in)::               rhs
     type(vector3d)::                    vr
-        vr%vc = rhs * lhs%vc
+        vr = rhs * lhs
     end function v3sproduct
     
     !--
@@ -674,14 +678,17 @@ contains
     real(rp),intent(in)::               rhs
     type(vector2d),intent(in)::         lhs
     type(vector2d)::                    vr
-        vr%vc = lhs%vc / rhs
+        vr%x_ = lhs%x_ / rhs
+        vr%y_ = lhs%y_ / rhs
     end function v2sdivide
     
     !--
     elemental type(vector3d) function v3sdivide(lhs,rhs) result(vr)
     real(rp),intent(in)::               rhs
     type(vector3d),intent(in)::         lhs
-        vr%vc = lhs%vc / rhs
+        vr%x_ = lhs%x_ / rhs
+        vr%y_ = lhs%y_ / rhs
+        vr%z_ = lhs%z_ / rhs
     end function v3sdivide
     
     
@@ -719,10 +726,25 @@ contains
         lhs%vc = rhs
     end subroutine VeqScalvals
     !--
-    pure subroutine Veqvals2(lhs,rhs)
+    pure subroutine vdeqvals(lhs,rhs)
     class(vector2d),intent(inout)::     lhs
     real(rp),dimension(:),intent(in)::  rhs
-        lhs%vc(:) = rhs(:)
-    end subroutine Veqvals2
+        call lhs%init(rhs)
+    end subroutine vdeqvals
+    !--
+    elemental subroutine v3eqv2(lhs,rhs)
+    type(vector3d),intent(inout)::      lhs
+    type(vector2d),intent(in)::         rhs
+        lhs%x_ = rhs%x_
+        lhs%y_ = rhs%y_
+        lhs%z_ = zero
+    end subroutine v3eqv2
+    !--
+    elemental subroutine v2eqv3(lhs,rhs)
+    type(vector2d),intent(inout)::      lhs
+    type(vector3d),intent(in)::         rhs
+        lhs%x_ = rhs%x_
+        lhs%y_ = rhs%y_
+    end subroutine v2eqv3
     
 end module vector_

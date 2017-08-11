@@ -147,60 +147,61 @@ contains
         !--
         n = size(quadx)
         !--
-        select case(n)
-        case(1)
-            quadx = 0._rp
-            quadw = 2._rp
-        case(2)
-            c = 1._rp/sqrt(3._rp)
-            !--
-            quadx = [-c , c]
-            quadw = [1._rp , 1._rp]
-        case(3)
-            c = sqrt(3._rp/5._rp)
-            !--
-            quadx = [-c , 0._rp , c]
-            quadw = [5._rp/9._rp , 8._rp/9._rp , 5._rp/9._rp]
-        case(4)
-            a = 2._rp/7._rp * sqrt(6._rp/5._rp)
-            b = sqrt(3._rp/7._rp - a)
-            c = sqrt(3._rp/7._rp + a)
-            d = sqrt(30._rp)/36._rp
-            !--
-            quadx = [-c , -b , b , c]            
-            quadw = [0.5_rp-d , 0.5_rp+d , 0.5_rp+d , 0.5_rp-d]
-        case(5)
-            a = 2._rp * sqrt(10._rp/7._rp)
-            b = 1._rp/3._rp * sqrt(5._rp - a)
-            c = 1._rp/3._rp * sqrt(5._rp + a)
-            d = 13._rp * sqrt(70._rp)
-            !--
-            quadx = [-c , -b , 0._rp , b , c]
-            quadw = [ (322._rp-d)/900._rp , (322._rp+d)/900._rp , 128._rp/225._rp,  &
-                        (322._rp+d)/900._rp , (322._rp-d)/900._rp ]
-        case default
-
-            if(n<80) then  !60,80,100: all ok
-                call iterativeMethod(n)
-            else
-                !asymptoticMethod unavailiable
-                !call asymptoticMethod
-                call disableprogram
-            endif
+        if(n<6) then
+        
+            select case(n)
+            case(1)
+                quadx = 0._rp
+                quadw = 2._rp
+            case(2)
+                c = 1._rp/sqrt(3._rp)
+                !--
+                quadx = [-c , c]
+                quadw = [1._rp , 1._rp]
+            case(3)
+                c = sqrt(3._rp/5._rp)
+                !--
+                quadx = [-c , 0._rp , c]
+                quadw = [5._rp/9._rp , 8._rp/9._rp , 5._rp/9._rp]
+            case(4)
+                a = 2._rp/7._rp * sqrt(6._rp/5._rp)
+                b = sqrt(3._rp/7._rp - a)
+                c = sqrt(3._rp/7._rp + a)
+                d = sqrt(30._rp)/36._rp
+                !--
+                quadx = [-c , -b , b , c]            
+                quadw = [0.5_rp-d , 0.5_rp+d , 0.5_rp+d , 0.5_rp-d]
+            case(5)
+                a = 2._rp * sqrt(10._rp/7._rp)
+                b = 1._rp/3._rp * sqrt(5._rp - a)
+                c = 1._rp/3._rp * sqrt(5._rp + a)
+                d = 13._rp * sqrt(70._rp)
+                !--
+                quadx = [-c , -b , 0._rp , b , c]
+                quadw = [ (322._rp-d)/900._rp , (322._rp+d)/900._rp , 128._rp/225._rp,  &
+                            (322._rp+d)/900._rp , (322._rp-d)/900._rp ]
+            end select
             
-        end select
+        elseif(n<80) then  !60,80,100: all ok
+        
+            call iterativeMethod(n)
+            
+        else
+        
+            call asymptoticMethod(n)
+            
+        endif
     
     contains
     
         !use newton's method to find the roots of Legendre Polynomials
         pure subroutine iterativeMethod(n)
         integer(ip),intent(in)::            n
-        integer(ip)::                       s,k,iter
-        real(rp),dimension((n+mod(n,2))/2)::x0,dx,pm1,pm2,ppm1,ppm2,p,pp
+        integer(ip)::                       k,iter
+        real(rp),dimension(ishft(n+1,-1)):: x0,dx,pm1,pm2,ppm1,ppm2,p,pp
 
-            s = mod(n,2)
             !Asymptotic formula (Tricomi), only for positive x, as the initialization
-            x0 = dfloat( [ (n+s)/2 : 1 : -1 ] )
+            x0 = dfloat( [ ishft(n+1,-1) : 1 : -1 ] )
             x0 = pi * (4._rp*x0 - 1._rp) / (4._rp*n + 2._rp)
             x0 = (1._rp - (n-1._rp)/(8._rp*n**3) - &
                 1._rp/(384._rp*n**4)*(39._rp-28._rp/sin(x0)**2) ) * cos(x0)
@@ -245,13 +246,25 @@ contains
                 ppm1 = pp
             enddo
             
-            quadx = [-x0((n+s)/2:1+s:-1),x0]
+            quadx = [-x0(ishft(n+1,-1):1+ibits(n,0,1):-1),x0]
             !deriavtives
-            quadw = [pp((n+s)/2:1+s:-1),pp]
+            quadw = [ pp(ishft(n+1,-1):1+ibits(n,0,1):-1),pp]
             !--refer to wiki(GausssQuadrature)
             quadw = 2._rp /( (1._rp-quadx**2) * quadw**2 )
-                
+            
         end subroutine iterativeMethod
+        
+        !--
+        pure subroutine asymptoticMethod(n)
+        integer(ip),intent(in)::        n
+        integer(ip),intent(in)::        m
+            
+            call disableprogram
+            
+            m = ishft(n+1,-1)
+            
+        
+        end subroutine asymptoticMethod
         
     end subroutine GaussLegendre
     

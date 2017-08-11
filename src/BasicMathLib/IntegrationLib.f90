@@ -1,29 +1,46 @@
+!numerical integeration is also denoted as cubature
+!quadrature is more applied to one dimensional integral
+!and cubature is referred to over more than one dimension
 module IntegrationLib
 use constants
+use arrayOpsLib
 use polynomial_
 implicit none
 
     private
     
     public:: integrate
+    
+    public:: GaussLegendre
+!----------------------------------------
     public:: integrateTrapezoid
     public:: integrateAdaptiveSimpson
     
-!---------------------------------------------------------
+    !--
     interface integrate
         procedure:: integrateAdaptiveSimpson_f1
         procedure:: integeratePolynomial
     end interface integrate
+    !--
 
-!--------------------------------------------------------
-    interface integrateTrapezoid
-        procedure::  integrateTrapezoid_f1
-    end interface integrateTrapezoid
-    
+!---------------------------------------------------------    
+!method for integrate one-dimensional function
     interface integrateAdaptiveSimpson
         procedure:: integrateAdaptiveSimpson_f1
     end interface integrateAdaptiveSimpson
+    
+    !not good
+    interface integrateTrapezoid
+        procedure::  integrateTrapezoid_f1
+    end interface integrateTrapezoid
 !---------------------------------------------------------
+    
+    
+!---------------------------------------------------------
+!Gaussian Quadrature Related
+    
+    
+    
 
 contains
     
@@ -117,5 +134,125 @@ contains
         r = p%integral(lo,up)
     end function integeratePolynomial
     
+    
+    
+!---------------------------------------------------
+!refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
+!calculate \[ \int_{-1}^{1} f(x) dx \],(refer to wiki, \pi(x)=1 rather than \pi(x)=\frac{1}{2})
+!asymptotic method unavailiable temporarily
+    pure subroutine GaussLegendre(quadx,quadw)
+    real(rp),dimension(:),intent(out)::         quadx,quadw
+    integer(ip)::                               n
+    real(rp)::                                  a,b,c,d
+        !--
+        n = size(quadx)
+        !--
+        select case(n)
+        case(1)
+            quadx = 0._rp
+            quadw = 2._rp
+        case(2)
+            c = 1._rp/sqrt(3._rp)
+            !--
+            quadx = [-c , c]
+            quadw = [1._rp , 1._rp]
+        case(3)
+            c = sqrt(3._rp/5._rp)
+            !--
+            quadx = [-c , 0._rp , c]
+            quadw = [5._rp/9._rp , 8._rp/9._rp , 5._rp/9._rp]
+        case(4)
+            a = 2._rp/7._rp * sqrt(6._rp/5._rp)
+            b = sqrt(3._rp/7._rp - a)
+            c = sqrt(3._rp/7._rp + a)
+            d = sqrt(30._rp)/36._rp
+            !--
+            quadx = [-c , -b , b , c]            
+            quadw = [0.5_rp-d , 0.5_rp+d , 0.5_rp+d , 0.5_rp-d]
+        case(5)
+            a = 2._rp * sqrt(10._rp/7._rp)
+            b = 1._rp/3._rp * sqrt(5._rp - a)
+            c = 1._rp/3._rp * sqrt(5._rp + a)
+            d = 13._rp * sqrt(70._rp)
+            !--
+            quadx = [-c , -b , 0._rp , b , c]
+            quadw = [ (322._rp-d)/900._rp , (322._rp+d)/900._rp , 128._rp/225._rp,  &
+                        (322._rp+d)/900._rp , (322._rp-d)/900._rp ]
+        case default
+
+            if(n<80) then  !60,80,100: all ok
+                call iterativeMethod(n)
+            else
+                !asymptoticMethod unavailiable
+                !call asymptoticMethod
+                call disableprogram
+            endif
+            
+        end select
+    
+    contains
+    
+        !use newton's method to find the roots of Legendre Polynomials
+        pure subroutine iterativeMethod(n)
+        integer(ip),intent(in)::            n
+        integer(ip)::                       s,k,iter
+        real(rp),dimension((n+mod(n,2))/2)::x0,dx,pm1,pm2,ppm1,ppm2,p,pp
+
+            s = mod(n,2)
+            !Asymptotic formula (Tricomi), only for positive x, as the initialization
+            x0 = dfloat( [ (n+s)/2 : 1 : -1 ] )
+            x0 = pi * (4._rp*x0 - 1._rp) / (4._rp*n + 2._rp)
+            x0 = (1._rp - (n-1._rp)/(8._rp*n**3) - &
+                1._rp/(384._rp*n**4)*(39._rp-28._rp/sin(x0)**2) ) * cos(x0)
+                
+            !--
+            !initialize
+            pm1 = x0
+            pm2 = 1._rp
+            ppm1 = 1._rp
+            ppm2 = 0._rp
+            dx = 100._rp
+            iter = 0
+            !---
+            do while(norm(dx,-1)>GlobalEps.and.iter<10)
+                iter = iter + 1
+                !
+                do k=1,n-1
+                    p = ((2._rp*k + 1._rp)*pm1*x0 - k*pm2)/(k+1._rp)
+                    pm2 = pm1
+                    pm1 = p
+                    pp = ((2._rp*k + 1._rp)*(Pm2 + x0*PPm1) - k*PPm2 ) / (k+1._rp)
+                    ppm2 = ppm1
+                    ppm1 = pp
+                enddo
+            
+                dx = - p/pp
+                x0 = x0 + dx
+                
+                !--
+                pm1 = x0
+                pm2 = 1._rp
+                ppm1 = 1._rp
+                ppm2 = 0._rp
+            enddo
+            
+            do k=1,n-1
+                p = ((2._rp*k + 1._rp)*pm1*x0 - k*pm2)/(k+1._rp)
+                pm2 = pm1
+                pm1 = p
+                pp = ((2._rp*k + 1._rp)*(Pm2 + x0*PPm1) - k*PPm2 ) / (k+1._rp)
+                ppm2 = ppm1
+                ppm1 = pp
+            enddo
+            
+            quadx = [-x0((n+s)/2:1+s:-1),x0]
+            !deriavtives
+            quadw = [pp((n+s)/2:1+s:-1),pp]
+            !--refer to wiki(GausssQuadrature)
+            quadw = 2._rp /( (1._rp-quadx**2) * quadw**2 )
+                
+        end subroutine iterativeMethod
+        
+    end subroutine GaussLegendre
     
 end module IntegrationLib

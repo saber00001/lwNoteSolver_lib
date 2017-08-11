@@ -5,7 +5,7 @@ implicit none
     private
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
-    public:: magSqr,mag,angle,norm,para,orth
+    public:: magSqr,mag,angle,unit,para,orth,norm
     public:: diag,trace
     
 !---------------------------------------------
@@ -50,33 +50,32 @@ implicit none
     
 contains
 
-
 !-------------------------------------------------------
-    pure real(rp) function magSqr(v) result(ms)
-    real(rp),dimension(:),intent(in)::  v
-        ms = sum( v**2 )
-    end function magSqr
-    
     pure real(rp) function mag(v)
     real(rp),dimension(:),intent(in)::  v
-        mag = sqrt( magSqr(v) )
+        mag = norm2(v)
     end function mag
+    
+    pure real(rp) function magSqr(v) result(ms)
+    real(rp),dimension(:),intent(in)::  v
+        ms = sum(v**2)
+    end function magSqr
     
     pure real(rp) function angle(v1,v2)
     real(rp),dimension(:),intent(in)::  v1,v2
         angle = acos((v1.ip.v2)/mag(v1)/mag(v2))
     end function angle
     
-    pure function norm(v)
+    pure function unit(v)
     real(rp),dimension(:),intent(in)::  v
-    real(rp),dimension(size(v))::       norm
-        norm = v / mag(v)
-    end function norm
+    real(rp),dimension(size(v))::       unit
+        unit = v / mag(v)
+    end function unit
     
     pure function para(v1,v2)
     real(rp),dimension(:),intent(in)::  v1,v2
     real(rp),dimension(size(v1))::      para
-        para = (v1.ip.v2)*norm(v2)
+        para = (v1.ip.v2)*unit(v2)
     end function para
     
     pure function orth(v1,v2)
@@ -85,7 +84,19 @@ contains
         orth = v1 - para(v1,v2)
     end function orth
     
-    
+    !Lp norm
+    pure real(rp) function norm(v,p)
+    real(rp),dimension(:),intent(in)::  v
+    integer(ip),intent(in)::            p
+    integer(ip)::                       i
+        if(p>0) then
+            norm = sum(abs(v)**p)**(1._rp/p)
+        elseif(p==0) then
+            norm = count( v /= [(0._rp,i=1,size(v))] )
+        else!let minus p be the infinity norm
+            norm = maxval(abs(v)) 
+        endif
+    end function norm
     
 !---------------------------------------------    
     pure function diag(m)

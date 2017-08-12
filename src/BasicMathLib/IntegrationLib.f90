@@ -5,6 +5,7 @@ module IntegrationLib
 use constants
 use arrayOpsLib
 use polynomial_
+use SpecialFunctionLib
 implicit none
 
     private
@@ -257,11 +258,14 @@ contains
         !--
         pure subroutine asymptoticMethod(n)
         integer(ip),intent(in)::        n
-        integer(ip),intent(in)::        m
+        integer(ip)::                   m
+        real(rp),dimension(ishft(n+1,-1)):: jk
             
+            !give up, too many, waiting for some day
             call disableprogram
             
             m = ishft(n+1,-1)
+            jk = besseljn_roots(0,m)
             
         
         end subroutine asymptoticMethod

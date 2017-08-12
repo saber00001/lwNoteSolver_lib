@@ -5,7 +5,7 @@ implicit none
     private
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
-    public:: magSqr,mag,angle,unit,para,orth,norm
+    public:: magSqr,mag,angle,unit,para,orth,norm,polyval
     public:: diag,trace
     
 !---------------------------------------------
@@ -97,6 +97,17 @@ contains
             norm = maxval(abs(v)) 
         endif
     end function norm
+    
+    !---------
+    pure real(rp) function polyval(v,x)
+    real(rp),dimension(0:),intent(in):: v
+    real(rp),intent(in)::               x
+    integer(ip)::                       i
+        polyval = 0._rp
+        do i=0,ubound(v,dim=1)
+            polyval = polyval + v(i) * x**i 
+        enddo
+    end function polyval
     
 !---------------------------------------------    
     pure function diag(m)

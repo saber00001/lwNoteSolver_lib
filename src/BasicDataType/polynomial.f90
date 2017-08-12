@@ -1,15 +1,23 @@
 module polynomial_
 use constants
+use arrayOpsLib
 use SpecialFunctionLib
 implicit none
     
     private
     public:: polynomial
     !some related polynomials and function
-    public:: Binomialcoef
-    public:: LegendrePolynomials
-    public:: norm_LegendrePolynomials
+    !--zero
     public:: zeroPolynomial
+    !--Bi
+    public:: Binomialcoef
+    !--Legendre
+    public:: LegendrePolynomial
+    public:: norm_LegendrePolynomial
+    !--chebyshev
+    public:: ChebyshevPolynomial_T
+    public:: ChebyshevPolynomial_Tsum
+    !--
     
     !-----------------------------------------
     type:: polynomial
@@ -37,7 +45,8 @@ implicit none
         procedure,private:: coefs_ptr
         !--
         generic::           assignment(=)   => paEq
-        generic::           operator(+)     => psPlus,spPlus
+        generic::           operator(+)     => psPlus,spPlus,ppPlus
+        generic::           operator(-)     => ppMinus,negativePoly
         generic::           operator(*)     => ppMultiply,spmultiply,psMultiply
         generic::           operator(/)     => psDivide
         generic::           operator(==)    => ppjdEq
@@ -46,6 +55,9 @@ implicit none
         procedure,pass(lhs),private::   paEq
         procedure,pass(lhs),private::   psPlus
         procedure,pass(rhs),private::   spPlus
+        procedure,pass(lhs),private::   ppPlus
+        procedure,pass(rhs),private::   negativePoly
+        procedure,pass(lhs),private::   ppMinus
         procedure,pass(lhs),private::   ppMultiply
         procedure,pass(lhs),private::   psMultiply
         procedure,pass(rhs),private::   spMultiply
@@ -83,25 +95,19 @@ contains
         allocate(this%coefs_,source = that%coefs_)
     end subroutine init_ply
 
-    !---
-    elemental integer(ip) function degree(this)
-    class(polynomial),intent(in)::      this
-    type(polynomial)::                  cthis
-        cthis = this%contract()
-        degree = ubound(cthis%coefs_,dim=1)
-    end function degree
-    !---
-    elemental real(rp) function coef_i(this,i)
-    class(polynomial),intent(in)::  this
-    integer(ip),intent(in)::        i
-        coef_i = this%coefs_(i)
-    end function coef_i
+    
     !---
     function coefs_ptr(this)
     class(polynomial),target,intent(in)::this
     real(rp),dimension(:),pointer::     coefs_ptr
         coefs_ptr => this%coefs_
     end function coefs_ptr
+    !---
+    elemental real(rp) function coef_i(this,i)
+    class(polynomial),intent(in)::  this
+    integer(ip),intent(in)::        i
+        coef_i = this%coefs_(i)
+    end function coef_i
     !---
     elemental subroutine scoef(this,i,coef)
     class(polynomial),intent(inout)::  this
@@ -116,6 +122,13 @@ contains
     real(rp),intent(in)::               v
         this%coefs_(i) = this%coefs_(i) + v
     end subroutine coefadd
+    !---
+    elemental integer(ip) function degree(this)
+    class(polynomial),intent(in)::      this
+    type(polynomial)::                  cthis
+        cthis = this%contract()
+        degree = ubound(cthis%coefs_,dim=1)
+    end function degree
     !--
     elemental type(polynomial) function contract(this) result(cp)
     class(polynomial),intent(in)::      this
@@ -131,17 +144,13 @@ contains
         allocate(cp%coefs_(0:n),source=this%coefs_(0:n))
     end function contract
     !--
-    pure real(rp) function funcval(this,x) result(y)
+    elemental real(rp) function funcval(this,x) result(y)
     class(polynomial),intent(in)::  this
     real(rp),intent(in)::           x
-    integer(ip)::                   i
-        y = zero
-        do i=0,this%degree()
-            y = y + this%coef(i) * x**i
-        enddo
+        y = polyval(this%coefs_,x)
     end function funcval
     !--
-    pure real(rp) function integral(this,lo,up)
+    elemental real(rp) function integral(this,lo,up)
     class(polynomial),intent(in)::  this
     real(rp),intent(in)::           lo,up
     real(rp)::                      ui,li,coef
@@ -176,6 +185,32 @@ contains
     class(polynomial),intent(in)::      rhs
         p = rhs + lhs
     end function spPlus
+    !--
+    elemental type(polynomial) function ppPlus(lhs,rhs) result(p)
+    class(polynomial),intent(in)::      lhs,rhs
+    integer(ip)::                       lu,ru
+        lu = ubound(lhs%coefs_,dim=1)
+        ru = ubound(rhs%coefs_,dim=1)
+        if(lu > ru) then
+            p = lhs
+            p%coefs_(0:ru) = p%coefs_(0:ru) + rhs%coefs_(0:ru)
+        else
+            p = rhs
+            p%coefs_(0:lu) = p%coefs_(0:lu) + lhs%coefs_(0:lu)
+            if(lu==ru) p = p%contract()
+        endif
+    end function ppPlus
+    !--
+    elemental type(polynomial) function negativePoly(rhs) result(p)
+    class(polynomial),intent(in)::      rhs
+        allocate(p%coefs_,source=rhs%coefs_)
+        p%coefs_(:) = - p%coefs_(:)
+    end function negativePoly
+    !--
+    elemental type(polynomial) function ppMinus(lhs,rhs) result(p)
+    class(polynomial),intent(in)::      lhs,rhs
+        p = lhs + (-rhs)
+    end function ppMinus
     !--
     elemental type(polynomial) function ppMultiply(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
@@ -230,6 +265,17 @@ contains
     end function ppjdeq
     
     
+    
+    
+    
+    
+!------------------------------------------------------------------
+!specified polynomials and related function
+    !---------------------
+    elemental type(polynomial) function zeroPolynomial() result(z)
+        allocate(z%coefs_(0:0)); z%coefs_ = zero
+    end function zeroPolynomial
+    
     !refer to wiki
     !----------------------
     pure integer(ip) function Binomialcoef_int(n,k) result(coef)
@@ -248,12 +294,9 @@ contains
         enddo
         coef = up / dfloat( factorial(k) )
     end function Binomialcoef_general
+    
     !---------------------
-    elemental type(polynomial) function zeroPolynomial() result(z)
-        allocate(z%coefs_(0:0)); z%coefs_ = zero
-    end function zeroPolynomial
-    !---------------------
-    elemental function LegendrePolynomials(n) result(ply)
+    elemental function LegendrePolynomial(n) result(ply)
     integer(ip),intent(in)::                n
     type(polynomial)::                      ply
     integer(ip)::                           k
@@ -261,12 +304,56 @@ contains
         do k=0,n
             ply%coefs_(k) = 2**n * Binomialcoef(n,k) * Binomialcoef(dfloat(n+k-1)/2.d0,n)
         enddo
-    end function LegendrePolynomials
+    end function LegendrePolynomial
     !--------------------
-    elemental function norm_LegendrePolynomials(n) result(ply)
+    elemental function norm_LegendrePolynomial(n) result(ply)
     integer(ip),intent(in)::                n
     type(polynomial)::                      ply
-        ply = sqrt(dfloat(2*n+1)/2.d0) * LegendrePolynomials(n)
-    end function norm_LegendrePolynomials
+        ply = sqrt(dfloat(2*n+1)/2.d0) * LegendrePolynomial(n)
+    end function norm_LegendrePolynomial
+    
+
+!wiki(chebyshev polynomial) T(n) for first kind and U(n) for second kind
+    pure type(polynomial) function ChebyshevPolynomial_T(n) result(poly)
+    integer(ip),intent(in)::            n
+        if(n<=0) then
+            poly = [1._rp]
+        elseif(n==1) then
+            poly = [0._rp,1._rp]
+        else
+            poly = T(n)
+        endif
+    contains
+        pure recursive function T(n)
+        integer(ip),intent(in)::        n
+        type(polynomial)::              T,x
+            x = [0._rp,1._rp]
+            T = 2._rp*x*T(n-1) - T(n-2)
+        end function T
+    end function ChebyshevPolynomial_T
+    
+!--compute sum_0^n(c*ChebPoly), sum = c(0)*T(0)%funcval(x)+......+c(n)*T(n)%funcval(x)
+!use cleanshaw algorithm, see wiki
+!https://github.com/chebfun/chebfun/blob/development/%40chebtech/clenshaw.m
+    pure real(rp) function ChebyshevPolynomial_Tsum(x,c) result(s)
+    real(rp),intent(in)::               x
+    real(rp),dimension(0:),intent(in):: c
+    real(rp)::                          bk1,bk2,b,x2
+    integer(ip)::                       n,k
+        bk1 = 0._rp
+        bk2 = bk1
+        x2 = 2._rp * x   !double
+        n = ubound(c,dim=1)
+        do k=n,2,-2
+            bk2 = c(k) + x2*bk1 - bk2
+            bk1 = c(k-1) + x2*bk2 - bk1
+        enddo
+        if(ibits(n,0,1)==1) then
+            b = bk1
+            bk1 = c(1) + x2*bk1 - bk2
+            bk2 = b
+        endif
+        s = c(0) + x * bk1 - bk2
+    end function ChebyshevPolynomial_Tsum
     
 end module polynomial_

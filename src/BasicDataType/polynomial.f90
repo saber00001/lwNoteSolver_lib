@@ -15,8 +15,8 @@ implicit none
     public:: LegendrePolynomial
     public:: norm_LegendrePolynomial
     !--chebyshev
-    public:: ChebyshevPolynomial_T
-    public:: ChebyshevPolynomial_Tsum
+    public:: ChebyshevPolynomialT_cleanshaw
+    public:: ChebyshevPolynomialT
     !--
     
     !-----------------------------------------
@@ -314,28 +314,30 @@ contains
     
 
 !wiki(chebyshev polynomial) T(n) for first kind and U(n) for second kind
-    pure type(polynomial) function ChebyshevPolynomial_T(n) result(poly)
+    pure type(polynomial) function ChebyshevPolynomialT(n) result(poly)
     integer(ip),intent(in)::            n
+    type(polynomial)::                  tm2,tm1,x
+    integer(ip)::                       i
         if(n<=0) then
             poly = [1._rp]
         elseif(n==1) then
             poly = [0._rp,1._rp]
         else
-            poly = T(n)
+            x   = [0._rp,1._rp]
+            tm2 = [1._rp]
+            tm1 = x
+            do i = 3 , n
+                poly = 2._rp*x*tm1 - tm2
+                tm2 = tm1
+                tm1 = poly
+            enddo
         endif
-    contains
-        pure recursive function T(n)
-        integer(ip),intent(in)::        n
-        type(polynomial)::              T,x
-            x = [0._rp,1._rp]
-            T = 2._rp*x*T(n-1) - T(n-2)
-        end function T
-    end function ChebyshevPolynomial_T
+    end function ChebyshevPolynomialT
     
 !--compute sum_0^n(c*ChebPoly), sum = c(0)*T(0)%funcval(x)+......+c(n)*T(n)%funcval(x)
 !use cleanshaw algorithm, see wiki
 !https://github.com/chebfun/chebfun/blob/development/%40chebtech/clenshaw.m
-    pure real(rp) function ChebyshevPolynomial_Tsum(x,c) result(s)
+    pure real(rp) function ChebyshevPolynomialT_cleanshaw(x,c) result(s)
     real(rp),intent(in)::               x
     real(rp),dimension(0:),intent(in):: c
     real(rp)::                          bk1,bk2,b,x2
@@ -354,6 +356,6 @@ contains
             bk2 = b
         endif
         s = c(0) + x * bk1 - bk2
-    end function ChebyshevPolynomial_Tsum
+    end function ChebyshevPolynomialT_cleanshaw
     
 end module polynomial_

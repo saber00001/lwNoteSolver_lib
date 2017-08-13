@@ -6,22 +6,20 @@ implicit none
 
     private
     
-    public::    sampleNormal
+    public::    sampleUniform
     public::    sampleAcceptRejection
     public::    samplePullin              !Generation of normal variates with given sample mean and variance
     
-    real(rp),parameter::    ranf_normalized = 2._rp**31 - 1._rp
+    
     
 !--------------------------------------------------
-    
     interface sampleAcceptRejection                            ! the acceptance-rejection method
         procedure:: sampleAR_discrete
         procedure:: sampleAR_continuous
     end interface 
     
-
     
-!-----
+!--------------------------------------------------
     abstract interface
         pure real(rp) function abs_df1(i)
         import:: ip,rp
@@ -32,7 +30,7 @@ implicit none
 contains
 
 !-------------------------------------------------
-    pure real(rp) function sampleNormal()
+    pure real(rp) function sampleUniform()
 !dir$ if defined(lwRandom)
     integer(ip),intent(in)::    idum
     integer(ip)::               mbig,mseed,mz,iff,ma,mj,mk,inext,inextp,i,k,ii
@@ -75,17 +73,18 @@ contains
         if(rf>1.e-8.and.rf < 0.99999999) return
     end do 
 !dir$ else
-        sampleNormal = ranf() / ranf_normalized
+    real(rp),parameter::    ranf_normalized = 2._rp**31 - 1._rp
+        sampleUniform = ranf() / ranf_normalized
 !dir$ end if
-    end function sampleNormal
+    end function sampleUniform
     
     !--
     pure integer(ip) function sampleAR_discrete(f1,fmax,xmin,xmax) result(x)
     procedure(abs_df1)::        f1        !the probability density function that is needed to input
     real(rp),intent(in)::       fmax
     integer(ip),intent(in)::    xmin,xmax
-        do; x = xmin + int(sampleNormal()*dfloat(xmax+1-xmin),kind=ip)
-            if(f1(x) / fmax > sampleNormal()) exit
+        do; x = xmin + int(sampleUniform()*dfloat(xmax+1-xmin),kind=ip)
+            if(f1(x) / fmax > sampleUniform()) exit
         end do
     end function sampleAR_discrete
     
@@ -93,8 +92,8 @@ contains
     pure real(rp) function sampleAR_continuous(f1,fmax,xmin,xmax) result(x)
     procedure(absf1)::          f1
     real(rp),intent(in)::       fmax,xmin,xmax
-        do; x = xmin + sampleNormal() * (xmax-xmin)
-            if(f1(x) / fmax > sampleNormal()) exit
+        do; x = xmin + sampleUniform() * (xmax-xmin)
+            if(f1(x) / fmax > sampleUniform()) exit
         end do
     end function sampleAR_continuous
     
@@ -107,46 +106,47 @@ contains
     integer(ip)::               neta,j,m,i
     real(rp),pointer,dimension(:)::    eprime,v,t
         if(n > 2) then
-            if(mod(n - 1,2)==0) then
-                mu = 0.d0
-            else if (mod(n - 1,2)==1) then
-                mu = 0.5d0
+            if(ibits(n - 1,0,1)==0) then
+                mu = 0._rp
+            else if (ibits(n - 1,0,1)==1) then
+                mu = 0.5_rp
             end if
-            r = dfloat(n - 1) / 2.d0 - mu
-            neta = int(r + 2.d0 * mu)  
+            r = dfloat(n - 1) / 2._rp - mu
+            neta = int(r + 2._rp * mu)  
             allocate (eprime(neta),v(n + 1),t(neta - 1)) 
             eprime = e        
-            v = 0.d0
-            t = 0.d0
+            v = 0._rp
+            t = 0._rp
             do j=1,neta-1
-                t(j) = sampleNormal() ** (1 / (neta - j - mu))
+                t(j) = sampleUniform() ** (1 / (neta - j - mu))
             end do
             do j=1,neta
                 do m=1,j-1
                     eprime(j) = eprime(j) * t(m)
                 end do
                 if(j==neta) exit
-                eprime(j) = eprime(j) * (1.d0 - t(j))
+                eprime(j) = eprime(j) * (1._rp - t(j))
             end do
             do m=1,int(r)
-                b = 2.d0 * pi * sampleNormal()
-                v(2 * m) = sqrt(2.d0 * eprime(m)) * cos(b)
-                v(2 * m + 1) = sqrt(2.d0 * eprime(m)) * sin(b)
+                b = 2._rp * pi * sampleUniform()
+                v(2 * m) = sqrt(2._rp * eprime(m)) * cos(b)
+                v(2 * m + 1) = sqrt(2._rp * eprime(m)) * sin(b)
             end do
-            if(mod(n-1,2)==1) then
-                if(sampleNormal() < 0.5) then
-                    v(n) = sqrt(2.d0 * eprime(neta))
+            if(ibits(n - 1,0,1)==1) then
+                if(sampleUniform() < 0.5) then
+                    v(n) = sqrt(2._rp * eprime(neta))
                 else
-                    v(n) = -sqrt(2.d0 * eprime(neta))
+                    v(n) = -sqrt(2._rp * eprime(neta))
                 end if
             end if
-            u(1) = um - sqrt(dfloat(n) - 1.d0) * v(2) / sqrt(1.d0 * dfloat(n))
+            u(1) = um - sqrt(dfloat(n) - 1._rp) * v(2) / sqrt(1._rp * dfloat(n))
             do i=2,n
-                u(i) = u(i - 1) + (sqrt(dfloat(n) + 2.d0 - dfloat(i)) * v(i) - sqrt(dfloat(n) - 1.d0 * dfloat(i)) * v(i + 1)) / sqrt(dfloat(n) + 1.d0 - dfloat(i))
+                u(i) = u(i - 1) + (sqrt(dfloat(n) + 2._rp - dfloat(i)) * v(i) - sqrt(dfloat(n) &
+                    - 1._rp * dfloat(i)) * v(i + 1)) / sqrt(dfloat(n) + 1._rp - dfloat(i))
             end do
             deallocate (eprime,v,t)
         else
-            if(sampleNormal() < 0.5) then
+            if(sampleUniform() < 0.5) then
                 ee = sqrt(e)
             else
                 ee = -sqrt(e)    

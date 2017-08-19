@@ -15,8 +15,9 @@ implicit none
     public:: LegendrePolynomial
     public:: norm_LegendrePolynomial
     !--chebyshev
-    public:: ChebyshevPolynomialT_cleanshaw
+    public:: ChebyshevPolynomialT_Clenshaw
     public:: ChebyshevPolynomialT
+    public:: ChebyshevPolynomialTset
     !--
     
     !-----------------------------------------
@@ -314,7 +315,7 @@ contains
     
 
 !wiki(chebyshev polynomial) T(n) for first kind and U(n) for second kind
-    pure type(polynomial) function ChebyshevPolynomialT(n) result(poly)
+    elemental type(polynomial) function ChebyshevPolynomialT(n) result(poly)
     integer(ip),intent(in)::            n
     type(polynomial)::                  tm2,tm1,x
     integer(ip)::                       i
@@ -326,7 +327,7 @@ contains
             x   = [0._rp,1._rp]
             tm2 = [1._rp]
             tm1 = x
-            do i = 3 , n
+            do i = 2 , n
                 poly = 2._rp*x*tm1 - tm2
                 tm2 = tm1
                 tm1 = poly
@@ -334,10 +335,31 @@ contains
         endif
     end function ChebyshevPolynomialT
     
+    !--
+    pure function ChebyshevPolynomialTset(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial),dimension(0:n)::   poly
+    type(polynomial)::                  x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly(0) = [1._rp]
+        elseif(n==1) then
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+        else
+            x       = [0._rp,1._rp]
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+            do i = 2 , n
+                poly(i) = 2._rp*x*poly(i-1) - poly(i-2)
+            enddo
+        endif
+    end function ChebyshevPolynomialTset
+    
 !--compute sum_0^n(c*ChebPoly), sum = c(0)*T(0)%funcval(x)+......+c(n)*T(n)%funcval(x)
-!use cleanshaw algorithm, see wiki
+!use Clenshaw algorithm, see wiki
 !https://github.com/chebfun/chebfun/blob/development/%40chebtech/clenshaw.m
-    pure real(rp) function ChebyshevPolynomialT_cleanshaw(x,c) result(s)
+    pure real(rp) function ChebyshevPolynomialT_Clenshaw(x,c) result(s)
     real(rp),intent(in)::               x
     real(rp),dimension(0:),intent(in):: c
     real(rp)::                          bk1,bk2,b,x2
@@ -356,6 +378,6 @@ contains
             bk2 = b
         endif
         s = c(0) + x * bk1 - bk2
-    end function ChebyshevPolynomialT_cleanshaw
+    end function ChebyshevPolynomialT_Clenshaw
     
 end module polynomial_

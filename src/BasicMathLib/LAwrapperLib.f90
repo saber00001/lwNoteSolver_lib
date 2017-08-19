@@ -1,6 +1,6 @@
 module LAwrapperLib
 use constants
-!dir$ if .not. defined(withoutlapack)
+!dir$ if .not. defined(without_imkl)
 use lapack95
 !dir$ end if
 implicit none
@@ -8,11 +8,12 @@ implicit none
     private
     
     !have emergency solver
-    public:: solvetridiagonal
+    public:: solveTridiagonalLES
     
     !totally rely on the lapack
-!dir$ if .not. defined(withoutlapack)
-    public:: solveGLES
+!dir$ if .not. defined(without_imkl)
+    public:: solveGeneralLES
+    public:: solveSymmetryLES
     public:: eigenSymTriDiagonal
 !dir$ end if
     
@@ -21,7 +22,7 @@ contains
 
     !getrf is short for triangular factorization of general real matrices
     !solve the general linear equations system by triangular factorization
-    pure subroutine solveGLES(a,b)
+    pure subroutine solveGeneralLES(a,b)
     real(rp),dimension(1:,1:),intent(inout)::   a
     real(rp),dimension(1:),intent(inout)::      b
     integer(isp),allocatable,dimension(:)::     ipiv
@@ -29,8 +30,21 @@ contains
         allocate( ipiv( max(1,min(size(a,dim=1),size(a,dim=2))) ) )
         call getrf(a,ipiv)
         call getrs(a,ipiv,b)
-    end subroutine solveGLES
-
+    end subroutine solveGeneralLES
+    
+    
+    !solve the symmetry linear equations system by LU factorization
+    pure subroutine solveSymmetryLES(a,b)
+    real(rp),dimension(1:,1:),intent(inout)::   a
+    real(rp),dimension(1:),intent(inout)::      b
+    integer(isp),allocatable,dimension(:)::     ipiv
+        !refer to ?getrf of lapack
+        allocate( ipiv( max(1,min(size(a,dim=1),size(a,dim=2))) ) )
+        call sytrf(a,ipiv=ipiv)
+        call sytrs(a,b,ipiv)
+    end subroutine solveSymmetryLES
+    
+    
     ![d] is the diagonal vector with size(n)
     ![eva] input sub_diagonal in beginning n-1 position and output n eigenvalues
     ![evc] output n*n orthonomal eigenvector
@@ -53,8 +67,8 @@ contains
     !a validation refer to 
     !h ttps://wenku.baidu.com/view/a2065cb064ce0508763231126edb6f1aff0071d7.html
     !the lapackwrapper and chasing method seem no difference below...
-!dir$ if defined (withoutlapack)
-    pure subroutine solvetridiagonal(a,b)
+!dir$ if defined (without_imkl)
+    pure subroutine solveTridiagonalLES(a,b)
     real(rp),dimension(1:,1:),intent(in)::  a
     real(rp),dimension(1:),intent(inout)::  b
     real(rp),dimension(:),allocatable::     beta
@@ -76,16 +90,16 @@ contains
         do i=n-1,1,-1
             b(i) = b(i) - beta(i) * b(i+1)
         enddo
-    end subroutine solvetridiagonal
+    end subroutine solveTridiagonalLES
 !dir$ else
-    pure subroutine solvetridiagonal(a,b)
+    pure subroutine solveTridiagonalLES(a,b)
     real(rp),dimension(1:,1:),intent(inout)::a
     real(rp),dimension(1:),intent(inout)::  b
     integer(ip)::                           n
         n = size(a,dim=1)
         call dttrfb(a(2:n,1),a(1:n,2),a(1:n-1,3))
         call dttrsb(a(2:n,1),a(1:n,2),a(1:n-1,3),b)
-    end subroutine solvetridiagonal
+    end subroutine solveTridiagonalLES
 !dir$ end if
 
 end module LAwrapperLib

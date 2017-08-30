@@ -3,6 +3,10 @@ include 'mkl_dfti.f90'
 !dir$ end if
 
 !-------------------------------------------------------------
+!intrinsic function for complex data
+!cmplx
+!conjg
+!-------------------------------------------------------------
 module fftWrapperLib
 use constants
 !dir$ if .not. defined(without_imkl)
@@ -59,14 +63,12 @@ contains
 
     
     !-----------
-    subroutine fft_1d_rdp(x)
-    real(rdp),dimension(:),intent(inout)::      x
-    complex(rdp),dimension(size(x))::           cx
-    type(dfti_descriptor),pointer::             hand
-    integer::                                   status
-        cx = cmplx(x)
+    !here we should try more dfti operations
+    subroutine fft_1d_rdp(x,cx)
+    real(rdp),dimension(:),intent(in)::         x
+    complex(rdp),dimension(:),intent(out)::     cx
+        cx = cmplx(x,kind=rdp)
         call fft(cx)
-        x = real(cx)
     end subroutine fft_1d_rdp
     
     
@@ -84,15 +86,11 @@ contains
     end subroutine ifft_1d_cdp
     
 
-    subroutine ifft_1d_rdp(x)
-    real(rdp),dimension(:),intent(inout)::      x
-    complex(rdp),dimension(size(x))::           cx
-    type(dfti_descriptor),pointer::             hand
-    integer::                                   status,n
-        cx = cmplx(x)
+    subroutine ifft_1d_rdp(x,cx)
+    real(rdp),dimension(:),intent(in)::         x
+    complex(rdp),dimension(:),intent(out)::     cx
+        cx = cmplx(x,kind=rdp)
         call ifft(cx)
-        x = real(cx) / dfloat(size(x))
     end subroutine ifft_1d_rdp
     
-
 end module fftWrapperLib

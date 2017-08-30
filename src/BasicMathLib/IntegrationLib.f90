@@ -4,20 +4,23 @@
 module IntegrationLib
 use constants
 use arrayOpsLib
-use polynomial_
 use SpecialFunctionLib
+use fftWrapperLib
+use polynomial_
 implicit none
 
     private
     
     public:: integrate
-    
     public:: GaussLegendre
-!----------------------------------------
+    public:: ClenshawCurtis
+    !--
     public:: integrateTrapezoid
     public:: integrateAdaptiveSimpson
     
-    !--
+    
+    
+!------------------------------------------------
     interface integrate
         procedure:: integrateAdaptiveSimpson_f1
         procedure:: integeratePolynomial
@@ -139,8 +142,10 @@ contains
     
 !---------------------------------------------------
 !refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
+!maybe a better choice https://github.com/Pazus/Legendre-Gauss-Quadrature/blob/master/legzo.m
 !calculate \[ \int_{-1}^{1} f(x) dx \],(refer to wiki, \pi(x)=1 rather than \pi(x)=\frac{1}{2})
 !asymptotic method unavailiable temporarily
+!n points reach 2n-1 order accuracy | N+1 points reach 2N+1 order accuracy
     pure subroutine GaussLegendre(quadx,quadw)
     real(rp),dimension(:),intent(out)::         quadx,quadw
     integer(ip)::                               n
@@ -183,7 +188,7 @@ contains
                             (322._rp+d)/900._rp , (322._rp-d)/900._rp ]
             end select
             
-        elseif(n<80) then  !60,80,100: all ok
+        elseif(n<1e6) then  !60,80,100: all ok. temperarialy relax the restriction
         
             call iterativeMethod(n)
             
@@ -271,5 +276,43 @@ contains
         end subroutine asymptoticMethod
         
     end subroutine GaussLegendre
+    
+    
+!-------------------------------------
+    !https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/%40chebtech2/chebpts.m
+    !https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/%40chebtech2/quadwts.m
+    !also refer to <lwReference>/<Fast Construction of the Fejer and Clenshaw-Curtis Quadrature Rules>
+    !calculate $\int_{-1}^{1} f(x) dx$
+    !n points reach n-1 order accuracy | N+1 points reach N orderaccuracy
+    subroutine ClenshawCurtis(quadx,quadw)
+    real(rp),dimension(:),intent(out)::         quadx,quadw
+    integer(ip)::                               n,nm1,nhc
+    complex(rp),dimension(size(quadx)-1)::      c
+    
+        n = size(quadx)
+        nm1 = n - 1
+        nhc = ishft(size(quadx)+1,-1)   !n_half_ceil
+        
+        !--
+        if(n==1) then
+            quadx(1) = 0._rp
+            quadw(1) = 2._rp
+            return
+        endif
+        
+        !--
+        quadx = cos( [nm1:0:-1] * pi / real(nm1,kind=rp) )
+        
+        !--Exact integrals of $\int_{-1}^{1} T_k (x) dx (k \in even number of [0,n-1])$
+        c(1:nhc) = cmplx( 2._rp/[1._rp , 1._rp - real([2:n-1:2]**2,kind=rp)] , kind=rp )
+        c(1:nm1) = [c(1:nhc),c(ishft(n,-1):2:-1)]
+        
+        call ifft(c)
+        
+        quadw(1:nm1) = real(c,kind=rp)
+        quadw(1) = quadw(1)/2._rp
+        quadw(n) = quadw(1)
+    
+    end subroutine ClenshawCurtis
     
 end module IntegrationLib

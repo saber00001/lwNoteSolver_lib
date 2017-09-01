@@ -4,20 +4,20 @@ implicit none
 
     private
     !--
-    public:: readkeyval
+    public:: readKeyVal
     public:: countsubstring,lowerString,upperString
     
     
     
     
     !--------------------------------------------------
-    interface readkeyval
+    interface readKeyVal
         procedure::  readkeyival
         procedure::  readkeyiar1val
         procedure::  readkeyiar2val
         procedure::  readkeycval
         procedure::  readkeyrval
-    end interface readkeyval
+    end interface readKeyVal
     
 contains
 

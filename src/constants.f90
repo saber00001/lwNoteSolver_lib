@@ -43,11 +43,17 @@ implicit none
     integer(idp),parameter::        Minidp  = -9223372036854775808_idp
     real(rdp),parameter::           minrdp  = transfer(-1_rdp,0._rdp)
     real(rsp),parameter::           minrsp  = transfer(-1_rsp,0._rsp)
+    integer(ip),parameter::         maxip   = huge(1_ip)
+    integer(ip),parameter::         minip   = maxip + 1_ip
+    real(rp),parameter::            maxrp   = huge(1._rp)
+    real(rp),parameter::            minrp   = - maxrp
+    real(rp),parameter::            nanrp   = transfer(-1_rp,0._rp)
+    real(rp),parameter::            infrp   = maxrp * (1._rp + epsilon(1._rp))
     
     
     !--------------------------------computing control parameters
-    real(rdp),parameter::           gradLimitingk           = 1.2d0
-    real(rdp),parameter::           GlobalEps               = 1.d-12
+    real(rdp),parameter::           gradLimitingk   = 1.2d0
+    real(rp),parameter::            GlobalEps       = epsilon(1._rp) * 10._rp
     
     
     !---here we offer two methods for disabling program [disablesub]&[disablenumber]

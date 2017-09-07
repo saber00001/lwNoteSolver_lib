@@ -5,7 +5,7 @@ implicit none
     private
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
-    public:: magSqr,mag,angle,unit,para,orth,norm,polyval
+    public:: magSqr,mag,angle,normal,para,orth,norm,polyval
     public:: diag,trace
     
 !---------------------------------------------
@@ -66,16 +66,16 @@ contains
         angle = acos((v1.ip.v2)/mag(v1)/mag(v2))
     end function angle
     
-    pure function unit(v)
+    pure function normal(v)
     real(rp),dimension(:),intent(in)::  v
-    real(rp),dimension(size(v))::       unit
-        unit = v / mag(v)
-    end function unit
+    real(rp),dimension(size(v))::       normal
+        normal = v / mag(v)
+    end function normal
     
     pure function para(v1,v2)
     real(rp),dimension(:),intent(in)::  v1,v2
     real(rp),dimension(size(v1))::      para
-        para = (v1.ip.v2)*unit(v2)
+        para = (v1.ip.v2)*normal(v2)
     end function para
     
     pure function orth(v1,v2)
@@ -111,27 +111,20 @@ contains
     
 !---------------------------------------------    
     pure function diag(m)
-    real(rp),dimension(:,:),intent(in)::m
+    real(rp),dimension(:,:),intent(in)::    m
     real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag
-    integer(ip)::                       i
-        do i = 1,size(diag)
-            diag(i) = m(i,i)
-        enddo
+    integer(ip)::                           i
+        forall(i=1:size(diag)) diag(i)=m(i,i)
     end function diag
     
     pure real(rp) function trace(m)
-    real(rp),dimension(:,:),intent(in)::m
-    integer(ip)::                       i
+    real(rp),dimension(:,:),intent(in)::    m
+    integer(ip)::                           i
         trace = zero
         do i=1,min(size(m,dim=1),size(m,dim=2))
             trace = trace + m(i,i)
         enddo
     end function trace
-
-
-
-
-
 
 
 !---------------------inner product--------------------------------

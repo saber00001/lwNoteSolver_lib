@@ -89,7 +89,7 @@ implicit none
 
     !--this is a basic procedure type, i put it here for the common use
     abstract interface
-        pure real(rp) function absf1(x) result(y)
+        elemental real(rp) function absf1(x) result(y)
         import:: rp
         real(rp),intent(in)::   x
         end function absf1

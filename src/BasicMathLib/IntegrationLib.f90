@@ -12,8 +12,11 @@ implicit none
     private
     
     public:: integrate
+    !--
+    public:: GaussQuadrature
     public:: GaussLegendre
     public:: ClenshawCurtis
+    public:: ClenshawCurtisNative
     !--
     public:: integrateTrapezoid
     public:: integrateAdaptiveSimpson
@@ -23,7 +26,8 @@ implicit none
 !------------------------------------------------
     interface integrate
         procedure:: integrateAdaptiveSimpson_f1
-        procedure:: integeratePolynomial
+        procedure:: integratePolynomial
+        procedure:: integrateGaussRule
     end interface integrate
     !--
 
@@ -38,16 +42,12 @@ implicit none
         procedure::  integrateTrapezoid_f1
     end interface integrateTrapezoid
 !---------------------------------------------------------
-    
-    
-!---------------------------------------------------------
-!Gaussian Quadrature Related
-    
-    
+
     
 
 contains
     
+
     !-------------------------------------------------------------------------
     pure function integrateTrapezoid_f1(func,lo,up,epsilon) result(integral)
     procedure(absf1)::                      func
@@ -132,15 +132,44 @@ contains
     end function simpson_f1
     
     !-----------------------------------------------
-    pure real(rp) function integeratePolynomial(p,lo,up) result(r)
+    pure real(rp) function integratePolynomial(p,lo,up) result(r)
     class(polynomial),intent(in)::  p
     real(rp),intent(in)::           lo,up
         r = p%integral(lo,up)
-    end function integeratePolynomial
+    end function integratePolynomial
     
     
     
+    !-------------------------------------------------
+    pure real(rp) function integrateGaussRule(f,ruleType,Order,normalCoef) result(r)
+    procedure(absf1)::              f
+    character(*),intent(in)::       ruleType
+    integer(ip),intent(in)::        Order
+    real(rp),optional,intent(in)::  normalCoef
+    real(rp),dimension(ishft(Order,-1)+1):: x,w
+    
+        call GaussQuadrature(ruleType,x,w)
+        r = merge(normalCoef,1._rp,present(normalCoef)) * sum(f(x)*w)
+        
+    end function integrateGaussRule
+    
+    
+
 !---------------------------------------------------
+    pure subroutine GaussQuadrature(ruletype,quadx,quadw)
+    character(*),intent(in)::           ruleType
+    real(rp),dimension(:),intent(out):: quadx,quadw
+    
+        select case(adjustl(ruleType))
+        case('Legendre','legendre')
+            call GaussLegendre(quadx,quadw)
+        case default
+            quadx = nanrp; quadw = nanrp
+        end select
+        
+    end subroutine GaussQuadrature
+    
+    
 !refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
 !maybe a better choice https://github.com/Pazus/Legendre-Gauss-Quadrature/blob/master/legzo.m
 !calculate \[ \int_{-1}^{1} f(x) dx \],(refer to wiki, \pi(x)=1 rather than \pi(x)=\frac{1}{2})
@@ -286,7 +315,7 @@ contains
     !n points reach n-1 order accuracy | N+1 points reach N orderaccuracy
     subroutine ClenshawCurtis(quadx,quadw)
     real(rp),dimension(:),intent(out)::         quadx,quadw
-    integer(ip)::                               n,nm1,nhc
+    integer(ip)::                               i,n,nm1,nhc
     complex(rp),dimension(size(quadx)-1)::      c
     
         n = size(quadx)
@@ -301,9 +330,11 @@ contains
         endif
         
         !--
-        quadx = cos( [nm1:0:-1] * pi / real(nm1,kind=rp) )
+        forall(i=0:nm1) quadx(i+1) = - cos( i * pi / real(nm1,kind=rp) )
         
         !--Exact integrals of $\int_{-1}^{1} T_k (x) dx (k \in even number of [0,n-1])$
+        !Warning...
+        !this array constructor leads to stack overflow, if necessary, modify it.
         c(1:nhc) = cmplx( 2._rp/[1._rp , 1._rp - real([2:n-1:2]**2,kind=rp)] , kind=rp )
         c(1:nm1) = [c(1:nhc),c(ishft(n,-1):2:-1)]
         
@@ -314,5 +345,40 @@ contains
         quadw(n) = quadw(1)
     
     end subroutine ClenshawCurtis
+    
+    !a quite slower method, as a reference
+    !refer to http://people.sc.fsu.edu/~jburkardt/f_src/f_src.html %sparse_grid_cc
+    pure subroutine ClenshawCurtisNative(quadx,quadw)
+    real(rp),dimension(:),intent(out)::         quadx,quadw
+    integer(ip)::                               n,nm1,i,j
+    real(rp)::                                  b,theta(size(quadx))
+          
+        n = size(quadx)
+        nm1 = n-1
+        forall(i=1:n) theta(i) = (i-1) * pi / nm1
+        
+        !--
+        if(n==1) then
+            quadx(1) = 0._rp
+            quadw(1) = 2._rp
+            return
+        endif
+
+        !--
+        forall(i=1:n) quadx(i) = - cos(theta(i))
+        
+        !--
+        do i = 1 , n
+            quadw(i) = 1._rp
+            do j = 1 , nm1 / 2
+                b = merge(1._rp , 2._rp , 2*j==nm1)
+                quadw(i) = quadw(i) - b * cos(2._rp * j * theta(i)) / (4._rp * j**2 - 1._rp)
+            end do
+        end do
+
+        quadw = quadw / nm1
+        quadw(2:nm1) = 2._rp * quadw(2:nm1)
+    
+    end subroutine ClenshawCurtisNative
     
 end module IntegrationLib

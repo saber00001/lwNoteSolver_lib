@@ -13,7 +13,7 @@ implicit none
     public:: Binomialcoef
     !--Legendre
     public:: LegendrePolynomial
-    public:: norm_LegendrePolynomial
+    public:: normalLegendrePolynomial
     !--chebyshev
     public:: ChebyshevPolynomialT_Clenshaw
     public:: ChebyshevPolynomialT
@@ -24,26 +24,27 @@ implicit none
     type:: polynomial
     
         private
+        
         real(rp),allocatable,dimension(:):: coefs_
         
     contains
     
         !--
-        generic::           init    => init_degree,init_ar,init_ply
-        procedure,private:: init_degree
-        procedure,private:: init_ar
-        procedure,private:: init_ply
+        generic::               init    => init_degree,init_ar,init_ply
+        procedure,private::     init_degree
+        procedure,private::     init_ar
+        procedure,private::     init_ply
         !--
-        procedure::         degree
-        procedure::         scoef
-        procedure::         coefadd
-        procedure::         contract
-        procedure::         funcval
-        procedure::         integral
+        procedure::             degree
+        procedure::             scoef
+        procedure::             coefadd
+        procedure::             contract
+        procedure::             funcval
+        procedure::             integral
         !--
-        generic::           coef => coef_i,coefs_ptr
-        procedure,private:: coef_i
-        procedure,private:: coefs_ptr
+        generic::               coef => coef_i,coefs_ptr
+        procedure,private::     coef_i
+        procedure,private::     coefs_ptr
         !--
         generic::           assignment(=)   => paEq
         generic::           operator(+)     => psPlus,spPlus,ppPlus
@@ -307,11 +308,11 @@ contains
         enddo
     end function LegendrePolynomial
     !--------------------
-    elemental function norm_LegendrePolynomial(n) result(ply)
+    elemental function normalLegendrePolynomial(n) result(ply)
     integer(ip),intent(in)::                n
     type(polynomial)::                      ply
         ply = sqrt(dfloat(2*n+1)/2.d0) * LegendrePolynomial(n)
-    end function norm_LegendrePolynomial
+    end function normalLegendrePolynomial
     
 
 !wiki(chebyshev polynomial) T(n) for first kind and U(n) for second kind

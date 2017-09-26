@@ -4,13 +4,14 @@
 !here we put some kernel of reconstruction method for general use
 module interpolationLib
 use constants
+use arrayOpsLib
 use vector_
 implicit none
 
     private
     !lgrInt = Lagrange
     public:: lgrInt,centerlgrInt,extralgrInt
-    public:: muscl2c
+    public:: muscl2c,muscl2c_specArrayFunctional
     public:: weno5z
     
     
@@ -41,6 +42,7 @@ implicit none
         !(p(1)--1--p(2)--1/2--x--1/2--p(3))
         procedure muscl2c_scalar
         procedure muscl2c_array
+        procedure muscl2c_specArrayDiscret
     end interface muscl2c
     
     interface weno5z
@@ -134,12 +136,11 @@ contains
     real(rp),intent(in)::               theta
     real(rp),dimension(3)::             delta
     real(rp)::                          r,beta
-    real(rp),parameter::                eps = 1.d-12
         delta(1) = f(2) - f(1)
         delta(2) = f(3) - f(2)
-        delta(3) = ( f(3) - f(1) ) / 2.d0
-        r = delta(2) / (delta(1) + eps)
-        beta = delta(3) / (delta(1) + eps)
+        delta(3) = ( f(3) - f(1) ) / 2._rp
+        r = delta(2) / (delta(1) + GlobalEps)
+        beta = delta(3) / (delta(1) + GlobalEps)
         x = f(2) + 0.5d0 * max(zero,min(theta,theta*r,beta)) * delta(1)
     end function  muscl2c_scalar
     !--
@@ -148,15 +149,52 @@ contains
     real(rp),intent(in)::                   theta
     real(rp),dimension(size(f,dim=1))::     x,r,beta
     real(rp),dimension(size(f,dim=1),3)::   delta
-    real(rp),parameter::                    eps = 1.d-12
         delta(:,1) = f(:,2) - f(:,1)
         delta(:,2) = f(:,3) - f(:,2)
-        delta(:,3) = ( f(:,3) - f(:,1) ) / 2.d0
-        r = delta(:,2) / (delta(:,1) + eps)
-        beta = delta(:,3) / (delta(:,1) + eps)
+        delta(:,3) = ( f(:,3) - f(:,1) ) / 2._rp
+        r = delta(:,2) / (delta(:,1) + GlobalEps)
+        beta = delta(:,3) / (delta(:,1) + GlobalEps)
         x = f(:,2) + 0.5d0 * max(zero,min(theta,theta*r,beta)) * delta(:,1)
     end function  muscl2c_array
-    
+    !--
+    pure function muscl2c_specArrayDiscret(f,theta) result(x)
+    real(rp),dimension(:,:,:),intent(in)::              f
+    real(rp),intent(in)::                               theta
+    real(rp),dimension(size(f,dim=1),size(f,dim=2))::   x,r,beta
+    real(rp),dimension(size(f,dim=1),size(f,dim=2),3):: delta
+        delta(:,:,1) = f(:,:,2) - f(:,:,1)
+        delta(:,:,2) = f(:,:,3) - f(:,:,2)
+        delta(:,:,3) = ( f(:,:,3) - f(:,:,1) ) / 2._rp
+        !discreted approach
+        r = delta(:,:,2) / (delta(:,:,1) + GlobalEps)
+        beta = delta(:,:,3) / (delta(:,:,1) + GlobalEps)
+        x = f(:,:,2) + 0.5d0 * max(zero,min(theta,theta*r,beta)) * delta(:,:,1)
+    end function  muscl2c_specArrayDiscret
+    !--
+    pure function muscl2c_specArrayFunctional(f,theta) result(x)
+    real(rp),dimension(:,:,:),intent(in)::              f
+    real(rp),intent(in)::                               theta
+    real(rp),dimension(size(f,dim=1),size(f,dim=2))::   x,r,beta
+    real(rp),dimension(size(f,dim=1),size(f,dim=2),3):: delta
+    integer(ip)::                                       i,loc
+        delta(:,:,1) = f(:,:,2) - f(:,:,1)
+        delta(:,:,2) = f(:,:,3) - f(:,:,2)
+        delta(:,:,3) = ( f(:,:,3) - f(:,:,1) ) / 2._rp
+        !functional approah 1. check direction; 2. check variation
+        do i=1,size(f,dim=2)
+            if( ( delta(:,i,1) .ip. delta(:,i,2) ) < 0._rp ) then
+                x(:,i) = f(:,i,2)
+            else
+                loc = minloc([theta*norm2(delta(:,i,1)),theta*norm2(delta(:,i,2)),norm2(delta(:,i,3))],dim=1)
+                if(loc==3) then
+                    x(:,i) = f(:,i,2) + 0.5_rp * delta(:,i,loc)
+                else
+                    x(:,i) = f(:,i,2) + 0.5_rp * delta(:,i,loc) * theta
+                endif
+            endif
+        enddo
+    end function  muscl2c_specArrayFunctional
+
     
     !---------
     !refer to <jcp - An improved WENO-Z scheme>

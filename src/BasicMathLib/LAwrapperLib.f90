@@ -142,7 +142,7 @@ contains
     real(rp),dimension(:,:),intent(inout):: m
     integer(ip)::                           i,j,n
 !dir$ if defined (lwcheck)
-        if(size(m,dim=1)/=size(m,dim=2)) call disableprogram
+        if(size(m,dim=1)/=size(m,dim=2)) call disableProgram
 !dir$ end if
 
         n = size(m,dim=1)

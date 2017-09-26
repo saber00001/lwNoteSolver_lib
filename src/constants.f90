@@ -1,99 +1,102 @@
-!refer to h ttps://gcc.gnu.org/onlinedocs/gfortran/STRUCTURE-and-RECORD.html
-!period(.) is an old component access, and we use percent(%)
+!refer to https://gcc.gnu.org/onlinedocs/gfortran/STRUCTURE-and-RECORD.html
+!period(.) is an old component access, and use percent(%) for
 module constants
 use,intrinsic:: ieee_arithmetic
 implicit none
     
+    !----------------------Global Accuracy control list----------------------
     integer,parameter ::            isp = selected_int_kind(9)
     integer,parameter ::            idp = selected_int_kind(13)
     integer,parameter ::            rsp = selected_real_kind(p=6,r=37)
     integer,parameter ::            rdp = selected_real_kind(p=15,r=307)
-    
-    !this is standard(like *) output of different types, as a reference here
-    character(10),  parameter::     fmt_rdp  = '(E23.15E3)'
-    character(9),   parameter::     fmt_rsp  = '(E13.6E2)'
-    character(5),   parameter::     fmt_idp  = '(I20)'
-    character(5),   parameter::     fmt_isp  = '(I11)'
-    
     integer,parameter::             ip  = isp
     integer,parameter::             rp  = rdp
-    integer,parameter::             lp  = isp
+    integer,parameter::             lp  = ip
     integer,parameter::             cl  = 32
-    real(rp),parameter::            zero = 0.d0
     
-    integer,parameter::             lowercase_a = ichar('a')
-    integer,parameter::             lowercase_z = ichar('z')
-    integer,parameter::             uppercase_a = ichar('A')
-    integer,parameter::             uppercase_z = ichar('Z')
+    
+    !----------------------character control list----------------------
+    !this is standard(like *) output of different types, as a reference here
+    character(10),parameter::       fmt_rdp  = '(E23.15E3)'
+    character(9),parameter::        fmt_rsp  = '(E13.6E2)'
+    character(5),parameter::        fmt_idp  = '(I20)'
+    character(5),parameter::        fmt_isp  = '(I11)'
+    integer(ip),parameter::         lowercase_a = ichar('a')
+    integer(ip),parameter::         lowercase_z = ichar('z')
+    integer(ip),parameter::         uppercase_a = ichar('A')
+    integer(ip),parameter::         uppercase_z = ichar('Z')
 
-
     
-    !--------------------------------physical and mathmatic constant    
-    real(rdp),parameter::           pi      = 4.d0*atan(1.d0)
-    real(rdp),parameter::           spi     = sqrt(pi)
-    real(rdp),parameter::           pi2     = pi**2
-    real(rdp),parameter::           e       = dexp(1.d0)
-    real(rdp),parameter::           k_b     = 1.38067852d-23    !boltzmann constant
-    real(rdp),parameter::           R_c     = 8.3144598d0       !gas constant   ( J * [K^-1] * [mol^-1] )
-    real(rdp),parameter::           R_air   = 287.058d0         !specific gas constant for ideal gas ( J * [kg^-1] * [mol^-1] )
-    real(rdp),parameter::           gm_diatomic = 1.4d0         !specific gas
+    !----------------------physical and mathmatic constants-----------------------
+    real(rp),parameter::            zero    = 0._rp
+    real(rp),parameter::            pi      = 4._rp*atan(1._rp)
+    real(rp),parameter::            spi     = sqrt(pi)
+    real(rp),parameter::            pi2     = pi**2
+    real(rp),parameter::            e       = exp(1._rp)
+    real(rp),parameter::            k_b     = 1.38067852e-23_rp!boltzmann constant
+    real(rp),parameter::            R_c     = 8.3144598_rp     !gas constant   ( J * [K^-1] * [mol^-1] )
+    real(rp),parameter::            R_air   = 287.058_rp       !specific gas constant for ideal gas ( J * [kg^-1] * [mol^-1] )
+    real(rp),parameter::            gm_diatomic = 1.4_rp       !specific gas
     
-    !--------------------------------numeric constant
+    
+    !----------------------numeric constant-----------------------------------------
     integer(isp),parameter::        Minisp  = -2147483648_isp
     integer(idp),parameter::        Minidp  = -9223372036854775808_idp
-    real(rdp),parameter::           minrdp  = transfer(-1_rdp,0._rdp)
-    real(rsp),parameter::           minrsp  = transfer(-1_rsp,0._rsp)
+    real(rdp),parameter::           minrdp  = -huge(1._rdp)
+    real(rsp),parameter::           minrsp  = -huge(1._rsp)
+    !--
     integer(ip),parameter::         maxip   = huge(1_ip)
     integer(ip),parameter::         minip   = maxip + 1_ip
     real(rp),parameter::            maxrp   = huge(1._rp)
     real(rp),parameter::            minrp   = - maxrp
     real(rp),parameter::            nanrp   = transfer(-1_rp,0._rp)
     real(rp),parameter::            infrp   = maxrp * (1._rp + epsilon(1._rp))
+    !--
+    real(rp),parameter::            GlobalEps = epsilon(1._rp) * 10._rp
     
+
     
-    !--------------------------------computing control parameters
-    real(rdp),parameter::           gradLimitingk   = 1.2d0
-    real(rp),parameter::            GlobalEps       = epsilon(1._rp) * 10._rp
-    
-    
-    !---here we offer two methods for disabling program [disablesub]&[disablenumber]
-!----------------------------------
+!----------------------------------------------------------------------------------------
     !a special ==, because of its unlimited polymorphism, don't override the intrinsic ==
     interface operator(.lweq.)
         procedure:: anyiseq
     end interface
     
-    !don't use module procedure refer to
-    !h ttps://software.intel.com/en-us/forums/
-    !intel-visual-fortran-compiler-for-windows/topic/721674
-    interface disableprogram
-        procedure:: disableprogram_
-    end interface disableprogram
+    !here we offer two methods for disabling program [disableProgram]&[disableNumber]
+    !and correspondingly offer a inquire function to check 
+    !if the number has beed disabled[disableNumber]
+    !Tips: don't use module procedure refer to
+    !https://software.intel.com/en-us/forums/intel-visual-fortran-compiler-for-windows/topic/721674
+    interface disableProgram
+        procedure:: disableProgram_
+    end interface disableProgram
 
     !--
-    interface disablenumber
+    interface disableNumber
         procedure::  rsp_nan
         procedure::  rdp_nan
         procedure::  isp_nan
         procedure::  idp_nan
-    end interface disablenumber
+    end interface disableNumber
     
     !--
-    interface disabled_stat
-        procedure::  disabled_stat_rsp
-        procedure::  disabled_stat_rdp
-        procedure::  disabled_stat_isp
-        procedure::  disabled_stat_idp
-    end interface disabled_stat
+    interface disableStat
+        procedure::  disableStat_rsp
+        procedure::  disableStat_rdp
+        procedure::  disableStat_isp
+        procedure::  disableStat_idp
+    end interface disableStat
     
-
-    !--this is a basic procedure type, i put it here for the common use
+    !this is a basic abstract procedure, as a sample and a common procedureType here
     abstract interface
         elemental real(rp) function absf1(x) result(y)
         import:: rp
         real(rp),intent(in)::   x
         end function absf1
     end interface
+    
+    
+    
     
 contains
 
@@ -112,19 +115,20 @@ contains
     end function anyiseq
     
     !-------------------------------
-    pure subroutine disableprogram_
+    pure subroutine disableProgram_
     integer(ip),dimension(:),allocatable:: n
         n(1) = 0
-    end subroutine disableprogram_
+    end subroutine disableProgram_
 
+    !--
     elemental subroutine rsp_nan(r)
     real(rsp),intent(out)::     r
-        r = minrsp
+        r = nanrp
     end subroutine rsp_nan
 
     elemental subroutine rdp_nan(r)
     real(rdp),intent(out)::     r
-        r = minrdp
+        r = nanrp
     end subroutine rdp_nan
     
     elemental subroutine isp_nan(i)
@@ -137,30 +141,25 @@ contains
         i = minidp
     end subroutine idp_nan
     
-    
     !--
-    elemental function disabled_stat_rsp(r) result(l)
+    elemental logical(lp) function disableStat_rsp(r) result(l)
     real(rsp),intent(in)::      r
-    logical(lp)::               l
         l = isnan(minrsp)
-    end function disabled_stat_rsp
+    end function disableStat_rsp
     
-    elemental function disabled_stat_rdp(r) result(l)
+    elemental logical(lp) function disableStat_rdp(r) result(l)
     real(rdp),intent(in)::      r
-    logical(lp)::               l
         l = isnan(minrdp)
-    end function disabled_stat_rdp
+    end function disableStat_rdp
     
-    elemental function disabled_stat_isp(i) result(l)
+    elemental logical(lp) function disableStat_isp(i) result(l)
     integer(isp),intent(in)::   i
-    logical(lp)::               l
         l = i == minisp
-    end function disabled_stat_isp
+    end function disableStat_isp
     
-    elemental function disabled_stat_idp(i) result(l)
+    elemental logical(lp) function disableStat_idp(i) result(l)
     integer(idp),intent(in)::   i
-    logical(lp)::               l
         l = i == minidp
-    end function disabled_stat_idp
+    end function disableStat_idp
     
 end module constants

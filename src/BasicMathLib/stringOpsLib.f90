@@ -102,7 +102,7 @@ contains
     integer(ip)::               st
         st = index(string,key)
         if(st == 0 ) then 
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         
@@ -111,7 +111,7 @@ contains
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         st = st + 1
@@ -129,7 +129,7 @@ contains
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         
@@ -138,7 +138,7 @@ contains
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         st = st + 1
@@ -157,7 +157,7 @@ contains
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         
@@ -166,7 +166,7 @@ contains
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         st = st + 1
@@ -174,7 +174,7 @@ contains
         !check '('
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='(') then
-            call disablenumber(val)
+            call disableNumber(val)
             return
         end if
         st = st + 1
@@ -191,14 +191,14 @@ contains
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         
         st = st + len(key)
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disablenumber(val)
+            call disableNumber(val)
             return
         endif
         st = st + 1
@@ -207,7 +207,7 @@ contains
         do i =1,n
             st = verify(string(st:),' ') + st - 1
             if(string(st:st)/='(') then
-                call disablenumber(val)
+                call disableNumber(val)
                 return
             end if
             st = st + 1

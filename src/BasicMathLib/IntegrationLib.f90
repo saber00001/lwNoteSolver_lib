@@ -6,7 +6,6 @@ use constants
 use arrayOpsLib
 use SpecialFunctionLib
 use fftWrapperLib
-use polynomial_
 implicit none
 
     private
@@ -26,7 +25,6 @@ implicit none
 !------------------------------------------------
     interface integrate
         procedure:: integrateAdaptiveSimpson_f1
-        procedure:: integratePolynomial
         procedure:: integrateGaussRule
     end interface integrate
     !--
@@ -130,13 +128,6 @@ contains
         mi = lo + (up-lo)/2.d0
         r = ( flo + 4.d0*f(mi) + fup ) * (up-lo) / 6.d0
     end function simpson_f1
-    
-    !-----------------------------------------------
-    pure real(rp) function integratePolynomial(p,lo,up) result(r)
-    class(polynomial),intent(in)::  p
-    real(rp),intent(in)::           lo,up
-        r = p%integral(lo,up)
-    end function integratePolynomial
     
     
     

@@ -6,11 +6,15 @@ implicit none
     
     private
     public:: polynomial
+    
+    !--add integrate method to the integrationLib
+    public:: integrate
+    
     !some related polynomials and function
     !--zero
     public:: zeroPolynomial
     !--Bi
-    public:: Binomialcoef
+    public:: BinomialCoef
     !--Legendre
     public:: LegendrePolynomial
     public:: normalLegendrePolynomial
@@ -19,6 +23,7 @@ implicit none
     public:: ChebyshevPolynomialT
     public:: ChebyshevPolynomialTset
     !--
+    
     
     !-----------------------------------------
     type:: polynomial
@@ -68,15 +73,22 @@ implicit none
 
     end type polynomial
 
-    !------------------------------------------------
-    interface Binomialcoef
-        procedure::  Binomialcoef_int
-        procedure::  Binomialcoef_general
-    end interface Binomialcoef
-    !------------------------------------------------
     
-!-----------------------------------------
+    !------------------------------------------------
+    interface BinomialCoef
+        procedure::  BinomialCoef_int
+        procedure::  BinomialCoef_general
+    end interface BinomialCoef
+    
+    interface integrate
+        procedure:: integratePolynomial
+    end interface integrate   
+    
+    
+    
 contains
+
+
     !--
     elemental subroutine init_degree(this,n)
     class(polynomial),intent(out)::         this
@@ -84,12 +96,14 @@ contains
         allocate(this%coefs_(0:n))
         this%coefs_  = zero
     end subroutine init_degree
+    
     !--
     pure subroutine init_ar(this,ar)
     class(polynomial),intent(out)::         this
     real(rp),dimension(0:),intent(in)::     ar
         allocate(this%coefs_,source = ar)
     end subroutine init_ar
+    
     !--
     elemental subroutine init_ply(this,that)
     class(polynomial),intent(out)::     this
@@ -104,12 +118,14 @@ contains
     real(rp),dimension(:),pointer::     coefs_ptr
         coefs_ptr => this%coefs_
     end function coefs_ptr
+    
     !---
     elemental real(rp) function coef_i(this,i)
     class(polynomial),intent(in)::  this
     integer(ip),intent(in)::        i
         coef_i = this%coefs_(i)
     end function coef_i
+    
     !---
     elemental subroutine scoef(this,i,coef)
     class(polynomial),intent(inout)::  this
@@ -117,6 +133,7 @@ contains
     real(rp),intent(in)::              coef
         this%coefs_(i) = coef
     end subroutine scoef
+    
     !--
     elemental subroutine coefadd(this,i,v)
     class(polynomial),intent(inout)::   this
@@ -124,6 +141,7 @@ contains
     real(rp),intent(in)::               v
         this%coefs_(i) = this%coefs_(i) + v
     end subroutine coefadd
+    
     !---
     elemental integer(ip) function degree(this)
     class(polynomial),intent(in)::      this
@@ -131,6 +149,7 @@ contains
         cthis = this%contract()
         degree = ubound(cthis%coefs_,dim=1)
     end function degree
+    
     !--
     elemental type(polynomial) function contract(this) result(cp)
     class(polynomial),intent(in)::      this
@@ -145,12 +164,14 @@ contains
         enddo
         allocate(cp%coefs_(0:n),source=this%coefs_(0:n))
     end function contract
+    
     !--
     elemental real(rp) function funcval(this,x) result(y)
     class(polynomial),intent(in)::  this
     real(rp),intent(in)::           x
         y = polyval(this%coefs_,x)
     end function funcval
+    
     !--
     elemental real(rp) function integral(this,lo,up)
     class(polynomial),intent(in)::  this
@@ -267,7 +288,12 @@ contains
     end function ppjdeq
     
     
-    
+    !-----------------------------------------------
+    pure real(rp) function integratePolynomial(p,lo,up) result(r)
+    class(polynomial),intent(in)::  p
+    real(rp),intent(in)::           lo,up
+        r = p%integral(lo,up)
+    end function integratePolynomial
     
     
     
@@ -280,12 +306,12 @@ contains
     
     !refer to wiki
     !----------------------
-    pure integer(ip) function Binomialcoef_int(n,k) result(coef)
+    pure integer(ip) function BinomialCoef_int(n,k) result(coef)
     integer(ip),intent(in)::    n,k
         coef = factorial(n-k+1,n) / factorial(k)
-    end function Binomialcoef_int
+    end function BinomialCoef_int
     !----------------------
-    pure real(rp) function Binomialcoef_general(a,k) result(coef)
+    pure real(rp) function BinomialCoef_general(a,k) result(coef)
     real(rp),intent(in)::       a
     integer(ip),intent(in)::    k
     integer(ip)::               i
@@ -295,7 +321,7 @@ contains
             up = up*(a-i+1)
         enddo
         coef = up / dfloat( factorial(k) )
-    end function Binomialcoef_general
+    end function BinomialCoef_general
     
     !---------------------
     elemental function LegendrePolynomial(n) result(ply)
@@ -304,7 +330,7 @@ contains
     integer(ip)::                           k
         call ply%init(n)
         do k=0,n
-            ply%coefs_(k) = 2**n * Binomialcoef(n,k) * Binomialcoef(dfloat(n+k-1)/2.d0,n)
+            ply%coefs_(k) = 2**n * BinomialCoef(n,k) * BinomialCoef(dfloat(n+k-1)/2.d0,n)
         enddo
     end function LegendrePolynomial
     !--------------------

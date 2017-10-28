@@ -51,6 +51,7 @@ implicit none
     real(rp),parameter::            minrp   = - maxrp
     real(rp),parameter::            nanrp   = transfer(-1_rp,0._rp)
     real(rp),parameter::            infrp   = maxrp * (1._rp + epsilon(1._rp))
+    real(rp),parameter::            tinrp   = tiny(1._rp)
     !--
     real(rp),parameter::            GlobalEps = epsilon(1._rp) * 10._rp
     

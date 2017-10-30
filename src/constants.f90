@@ -33,10 +33,11 @@ implicit none
     real(rp),parameter::            spi     = sqrt(pi)
     real(rp),parameter::            pi2     = pi**2
     real(rp),parameter::            e       = exp(1._rp)
-    real(rp),parameter::            k_b     = 1.38067852e-23_rp!boltzmann constant
-    real(rp),parameter::            R_c     = 8.3144598_rp     !gas constant   ( J * [K^-1] * [mol^-1] )
-    real(rp),parameter::            R_air   = 287.058_rp       !specific gas constant for ideal gas ( J * [kg^-1] * [mol^-1] )
-    real(rp),parameter::            gm_diatomic = 1.4_rp       !specific gas
+    real(rp),parameter::            k_b     = 1.38067852e-23_rp !boltzmann constant
+    real(rp),parameter::            R_c     = 8.3144598_rp      !gas constant   ( J * [K^-1] * [mol^-1] )
+    real(rp),parameter::            R_air   = 287.058_rp        !specific gas constant for ideal gas ( J * [kg^-1] * [mol^-1] )
+    real(rp),parameter::            gm_diatomic = 1.4_rp        !specific gas
+    real(rp),parameter::            P_atm   = 101325._rp        !pressure at one atmosphere
     
     
     !----------------------numeric constant-----------------------------------------

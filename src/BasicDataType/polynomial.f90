@@ -7,21 +7,21 @@ implicit none
     private
     public:: polynomial
     
-    !--add integrate method to the integrationLib
+    !--add special integrate method for polynomial
     public:: integrate
     
     !some related polynomials and function
     !--zero
     public:: zeroPolynomial
-    !--Bi
-    public:: BinomialCoef
-    !--Legendre
+    !--Legendre, use recursive method rather than explict expression to avoid failure of large n for binomialCoef/factorial method
     public:: LegendrePolynomial
+    public:: LegendrePolynomialSet
     public:: normalLegendrePolynomial
+    public:: normalLegendrePolynomialSet
     !--chebyshev
-    public:: ChebyshevPolynomialT_Clenshaw
     public:: ChebyshevPolynomialT
     public:: ChebyshevPolynomialTset
+    public:: ChebyshevPolynomialT_Clenshaw
     !--
     
     
@@ -74,12 +74,8 @@ implicit none
     end type polynomial
 
     
-    !------------------------------------------------
-    interface BinomialCoef
-        procedure::  BinomialCoef_int
-        procedure::  BinomialCoef_general
-    end interface BinomialCoef
     
+!---------------------------------------------------------------------
     interface integrate
         procedure:: integratePolynomial
     end interface integrate   
@@ -298,47 +294,76 @@ contains
     
     
 !------------------------------------------------------------------
-!specified polynomials and related function
+!specified polynomials
+    
     !---------------------
     elemental type(polynomial) function zeroPolynomial() result(z)
         allocate(z%coefs_(0:0)); z%coefs_ = zero
     end function zeroPolynomial
     
-    !refer to wiki
-    !----------------------
-    pure integer(ip) function BinomialCoef_int(n,k) result(coef)
-    integer(ip),intent(in)::    n,k
-        coef = factorial(n-k+1,n) / factorial(k)
-    end function BinomialCoef_int
-    !----------------------
-    pure real(rp) function BinomialCoef_general(a,k) result(coef)
-    real(rp),intent(in)::       a
-    integer(ip),intent(in)::    k
-    integer(ip)::               i
-    real(rp)::                  up
-        up = 1.d0
-        do i =1,k
-            up = up*(a-i+1)
-        enddo
-        coef = up / dfloat( factorial(k) )
-    end function BinomialCoef_general
+    
     
     !---------------------
-    elemental function LegendrePolynomial(n) result(ply)
-    integer(ip),intent(in)::                n
-    type(polynomial)::                      ply
-    integer(ip)::                           k
-        call ply%init(n)
-        do k=0,n
-            ply%coefs_(k) = 2**n * BinomialCoef(n,k) * BinomialCoef(dfloat(n+k-1)/2.d0,n)
-        enddo
+    !n P_n = (2n-1) x P_{n-1} - (n-1) P_{n-2}
+    elemental type(polynomial) function LegendrePolynomial(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial)::                  tm2,tm1,x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly = [1._rp]
+        elseif(n==1) then
+            poly = [0._rp,1._rp]
+        else
+            x   = [0._rp,1._rp]
+            tm2 = [1._rp]
+            tm1 = x
+            do i = 2 , n
+                poly = (2._rp*i - 1._rp) * x * tm1 - (i - 1._rp) * tm2
+                poly = poly / real(i,kind=rp)
+                tm2 = tm1
+                tm1 = poly
+            enddo
+        endif
     end function LegendrePolynomial
-    !--------------------
-    elemental function normalLegendrePolynomial(n) result(ply)
+    
+    !--
+    pure function LegendrePolynomialSet(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial),dimension(0:n)::   poly
+    type(polynomial)::                  x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly(0) = [1._rp]
+        elseif(n==1) then
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+        else
+            x   = [0._rp,1._rp]
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+            do i = 2 , n
+                poly(i) = (2._rp*i - 1._rp) * x * poly(i-1) - (i - 1._rp) * poly(i-2)
+                poly(i) = poly(i) / real(i,kind=rp)
+            enddo
+        endif
+    end function LegendrePolynomialSet
+    
+    !--
+    elemental type(polynomial) function normalLegendrePolynomial(n) result(poly)
     integer(ip),intent(in)::                n
-    type(polynomial)::                      ply
-        ply = sqrt(dfloat(2*n+1)/2.d0) * LegendrePolynomial(n)
+        poly = sqrt(dfloat(2*n+1)/2.d0) * LegendrePolynomial(n)
     end function normalLegendrePolynomial
+    
+    !--
+    pure function normalLegendrePolynomialSet(n) result(poly)
+    integer(ip),intent(in)::                n
+    type(polynomial),dimension(0:n)::       poly
+    integer(ip)::                           i
+        poly = LegendrePolynomialSet(n)
+        do i=0,n
+            poly(i) = sqrt(dfloat(2*i+1)/2.d0) * poly(i)
+        enddo
+    end function normalLegendrePolynomialSet
     
 
 !wiki(chebyshev polynomial) T(n) for first kind and U(n) for second kind
@@ -382,6 +407,7 @@ contains
             enddo
         endif
     end function ChebyshevPolynomialTset
+    
     
 !--compute sum_0^n(c*ChebPoly), sum = c(0)*T(0)%funcval(x)+......+c(n)*T(n)%funcval(x)
 !use Clenshaw algorithm, see wiki

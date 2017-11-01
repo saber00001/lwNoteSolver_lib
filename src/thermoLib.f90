@@ -1,4 +1,4 @@
-!physical model branches into an extreme scale with various correlations.
+!physical model branches into an extreme scale with various corrections.
 !create an nested object to organize these models is a smarter way to refactor
 !use the instatiated object always
 module thermoLib
@@ -14,7 +14,7 @@ implicit none
     type GasPhaseChemReactionModelType
     contains
         
-        !chemistry production of two-body without any correlation
+        !chemistry production of basic model, see chemKin of Ansys
         generic::                   ProductionRate => ProductionRate_Basic
         procedure,nopass::          ProductionRate_Basic
         

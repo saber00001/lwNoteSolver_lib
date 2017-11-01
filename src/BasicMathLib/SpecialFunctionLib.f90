@@ -5,37 +5,70 @@ implicit none
 
     private
     public:: factorial
+    public:: binomialCoef
     public:: besseljn_roots
+    
+    
 !-------------------------------------------
     interface factorial
-        procedure::  factorial_1n
+        procedure::  factorial_n
         procedure::  factorial_kn
     end interface factorial
 
+    !--
+    interface BinomialCoef
+        procedure::  BinomialCoef_int
+        procedure::  BinomialCoef_general
+    end interface BinomialCoef
+    
+    
 contains
 
-    pure function factorial_1n(n) result(factorial)
+    !due to factorial increase very rapidly, so give a bigest integer type
+    pure integer(8) function factorial_n(n) result(factorial)
     integer(ip),intent(in)::    n
-    integer(ip)::               factorial,i
+    integer(ip)::               i
         factorial = 1
-        if(n<100) then  !recommended 100
+        if(n<=20) then
             do i=1,n
                 factorial = factorial*i
             enddo
         else
+            !integer(8) limit of factoral(20)
+            call disableProgram
             !fast factorial, see wiki(Stirling's approximation, second order)
-            factorial = nint( sqrt(2._rp*pi*n) * (n/e)**n * (1._rp + 1._rp/12._rp/n ) )
+            factorial = nint( sqrt(2._rp*pi*n) * (n/e)**n )
         endif
-    end function factorial_1n
+    end function factorial_n
     
-    pure function factorial_kn(k,n) result(factorial)
+    pure integer(8) function factorial_kn(k,n) result(factorial)
     integer(ip),intent(in)::    k,n
-    integer(ip)::               factorial,i
+    integer(ip)::               i
         factorial = 1
         do i=k,n
             factorial = factorial*i
         enddo
     end function factorial_kn
+    
+!--------------------------------------------------
+    !refer to wiki <binomial coe>
+    !----------------------
+    pure integer(ip) function BinomialCoef_int(n,k) result(coef)
+    integer(ip),intent(in)::    n,k
+        coef = factorial(n-k+1,n) / factorial(k)
+    end function BinomialCoef_int
+    !----------------------
+    pure real(rp) function BinomialCoef_general(a,k) result(coef)
+    real(rp),intent(in)::       a
+    integer(ip),intent(in)::    k
+    integer(ip)::               i
+    real(rp)::                  up
+        up = 1._rp
+        do i =1,k
+            up = up*(a-i+1)
+        enddo
+        coef = up / dfloat( factorial(k) )
+    end function BinomialCoef_general
     
     
 !---------------------------------------------------

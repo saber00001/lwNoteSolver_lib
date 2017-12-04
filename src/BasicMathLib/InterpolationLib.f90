@@ -11,7 +11,7 @@ implicit none
     private
     !lgrInt = Lagrange
     public:: lgrInt,centerlgrInt,extralgrInt
-    public:: muscl2c,muscl2c_specArrayFunctional
+    public:: muscl2c,muscl2c_SpOrthoNormalCoefsArray
     public:: weno5z
     
     
@@ -171,7 +171,7 @@ contains
         x = f(:,:,2) + 0.5d0 * max(zero,min(theta,theta*r,beta)) * delta(:,:,1)
     end function  muscl2c_specArrayDiscret
     !--
-    pure function muscl2c_specArrayFunctional(f,theta) result(x)
+    pure function muscl2c_SpOrthoNormalCoefsArray(f,theta) result(x)
     real(rp),dimension(:,:,:),intent(in)::              f
     real(rp),intent(in)::                               theta
     real(rp),dimension(size(f,dim=1),size(f,dim=2))::   x,r,beta
@@ -193,7 +193,7 @@ contains
                 endif
             endif
         enddo
-    end function  muscl2c_specArrayFunctional
+    end function  muscl2c_SpOrthoNormalCoefsArray
 
     
     !---------

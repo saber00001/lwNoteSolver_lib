@@ -30,7 +30,7 @@ implicit none
     
         private
         
-        real(rp),allocatable,dimension(:):: coefs_
+        real(rp),allocatable,dimension(:):: coef_
         
     contains
     
@@ -46,10 +46,12 @@ implicit none
         procedure::             contract
         procedure::             funcval
         procedure::             integral
+        procedure::             differential
+        !procedure::             realRoot
         !--
-        generic::               coef => coef_i,coefs_ptr
+        generic::               coef => coef_i,coef_ptr
         procedure,private::     coef_i
-        procedure,private::     coefs_ptr
+        procedure,private::     coef_ptr
         !--
         generic::           assignment(=)   => paEq
         generic::           operator(+)     => psPlus,spPlus,ppPlus
@@ -89,37 +91,37 @@ contains
     elemental subroutine init_degree(this,n)
     class(polynomial),intent(out)::         this
     integer(ip),intent(in)::                n
-        allocate(this%coefs_(0:n))
-        this%coefs_  = zero
+        allocate(this%coef_(0:n))
+        this%coef_  = zero
     end subroutine init_degree
     
     !--
     pure subroutine init_ar(this,ar)
     class(polynomial),intent(out)::         this
     real(rp),dimension(0:),intent(in)::     ar
-        allocate(this%coefs_,source = ar)
+        allocate(this%coef_,source = ar)
     end subroutine init_ar
     
     !--
     elemental subroutine init_ply(this,that)
     class(polynomial),intent(out)::     this
     class(polynomial),intent(in)::      that
-        allocate(this%coefs_,source = that%coefs_)
+        allocate(this%coef_,source = that%coef_)
     end subroutine init_ply
 
     
     !---
-    function coefs_ptr(this)
+    function coef_ptr(this)
     class(polynomial),target,intent(in)::this
-    real(rp),dimension(:),pointer::     coefs_ptr
-        coefs_ptr => this%coefs_
-    end function coefs_ptr
+    real(rp),dimension(:),pointer::     coef_ptr
+        coef_ptr => this%coef_
+    end function coef_ptr
     
     !---
     elemental real(rp) function coef_i(this,i)
     class(polynomial),intent(in)::  this
     integer(ip),intent(in)::        i
-        coef_i = this%coefs_(i)
+        coef_i = this%coef_(i)
     end function coef_i
     
     !---
@@ -127,7 +129,7 @@ contains
     class(polynomial),intent(inout)::  this
     integer(ip),intent(in)::           i
     real(rp),intent(in)::              coef
-        this%coefs_(i) = coef
+        this%coef_(i) = coef
     end subroutine scoef
     
     !--
@@ -135,7 +137,7 @@ contains
     class(polynomial),intent(inout)::   this
     integer(ip),intent(in)::            i
     real(rp),intent(in)::               v
-        this%coefs_(i) = this%coefs_(i) + v
+        this%coef_(i) = this%coef_(i) + v
     end subroutine coefadd
     
     !---
@@ -143,29 +145,29 @@ contains
     class(polynomial),intent(in)::      this
     type(polynomial)::                  cthis
         cthis = this%contract()
-        degree = ubound(cthis%coefs_,dim=1)
+        degree = ubound(cthis%coef_,dim=1)
     end function degree
     
     !--
     elemental type(polynomial) function contract(this) result(cp)
     class(polynomial),intent(in)::      this
     integer(ip)::                       i,n
-        n = ubound(this%coefs_,dim=1)
+        n = ubound(this%coef_,dim=1)
         do i=n,1,-1
-            if(this%coefs_(i)==zero) then
+            if(this%coef_(i)==zero) then
                 n = n - 1
             else
                 exit
             endif
         enddo
-        allocate(cp%coefs_(0:n),source=this%coefs_(0:n))
+        allocate(cp%coef_(0:n),source=this%coef_(0:n))
     end function contract
     
     !--
     elemental real(rp) function funcval(this,x) result(y)
     class(polynomial),intent(in)::  this
     real(rp),intent(in)::           x
-        y = polyval(this%coefs_,x)
+        y = polyval(this%coef_,x)
     end function funcval
     
     !--
@@ -183,20 +185,100 @@ contains
         integral = ui - li  !less minus better
     end function integral    
     
+    !--
+    elemental type(polynomial) function differential(this) result(d)
+    class(polynomial),intent(in)::  this
+    integer(ip)::                   i,n
+        n = this%degree()
+        if(n==0) then
+            d = [0._rp]
+        else
+            call d%init( n - 1 )
+            do i=0,n-1
+                d%coef_(i) = this%coef_(i+1) * real(i+1,kind=rp)
+            enddo
+        endif
+    end function differential
     
+    !--Constructing
+    pure subroutine realRoot(this,root)
+    class(polynomial),intent(in)::                  this
+    real(rp),dimension(:),allocatable,intent(out):: root
+    real(rp),dimension(:),allocatable::             extremum
+    integer(ip)::                                   n
+    type(polynomial)::                              w
+
+        root = 0._rp
+        call disableprogram    
+        !--
+        w = this%contract()
+        n = ubound(w%coef_,dim=1)
+        select case(n)
+        case(0)
+            return
+        case(1)
+            call p1zero(w%coef_,root)
+        case(2)
+            call p2zero(w%coef_,root)
+        case default
+            call extremumSearch(w,root)
+        endselect
+        
+    contains
+    
+        pure subroutine p1zero(a,root)
+        real(rp),dimension(0:),intent(in)::             a
+        real(rp),dimension(:),allocatable,intent(out):: root
+            allocate(root,source=[-a(0)/a(1)])
+        end subroutine p1zero
+        !--
+        pure subroutine p2zero(a,root)
+        real(rp),dimension(0:),intent(in)::             a
+        real(rp),dimension(:),allocatable,intent(out):: root
+        real(rp)::                                      d
+            d = a(1)**2 - 4._rp *a(0)*a(2)
+            if(d<0._rp) then
+                return
+            elseif(d==0._rp) then
+                allocate(root,source=[-a(1)/a(2)/2._Rp])
+            else
+                allocate(root,source=[(-a(1)-sqrt(d))/a(2)/2._rp,(-a(1)+sqrt(d))/a(2)/2._rp])
+            endif
+        end subroutine p2zero
+        !--hard to compute
+        pure recursive subroutine extremumSearch(w,root)
+        class(polynomial),intent(in)::                  w
+        real(rp),dimension(:),allocatable,intent(out):: root
+        type(polynomial)::                              dif
+        real(rp),dimension(:),allocatable::             dz
+        integer(ip)::                                   n
+            if(ubound(w%coef_,dim=1)==2) then
+                call p2zero(w%coef_,root)
+            else
+                dif = w%differential()
+                call extremumSearch(dif,dz)
+                if(allocated(dz)) then
+                    n = size(dz)
+                else
+                    return
+                endif
+            endif
+        end subroutine extremumSearch
+        
+    end subroutine realRoot
     
 !--------operator
     pure subroutine paEq(lhs,rhs)
     class(polynomial),intent(out)::     lhs
     real(rp),dimension(0:),intent(in):: rhs
-        allocate(lhs%coefs_,source=rhs)
+        allocate(lhs%coef_,source=rhs)
     end subroutine paEq
     !--
     elemental type(polynomial) function psPlus(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
-        allocate(p%coefs_ , source = lhs%coefs_)
-        p%coefs_(0) = p%coefs_(0) + rhs
+        allocate(p%coef_ , source = lhs%coef_)
+        p%coef_(0) = p%coef_(0) + rhs
     end function psPlus
     !--
     elemental type(polynomial) function spPlus(lhs,rhs) result(p)
@@ -208,22 +290,22 @@ contains
     elemental type(polynomial) function ppPlus(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs,rhs
     integer(ip)::                       lu,ru
-        lu = ubound(lhs%coefs_,dim=1)
-        ru = ubound(rhs%coefs_,dim=1)
+        lu = ubound(lhs%coef_,dim=1)
+        ru = ubound(rhs%coef_,dim=1)
         if(lu > ru) then
             p = lhs
-            p%coefs_(0:ru) = p%coefs_(0:ru) + rhs%coefs_(0:ru)
+            p%coef_(0:ru) = p%coef_(0:ru) + rhs%coef_(0:ru)
         else
             p = rhs
-            p%coefs_(0:lu) = p%coefs_(0:lu) + lhs%coefs_(0:lu)
+            p%coef_(0:lu) = p%coef_(0:lu) + lhs%coef_(0:lu)
             if(lu==ru) p = p%contract()
         endif
     end function ppPlus
     !--
     elemental type(polynomial) function negativePoly(rhs) result(p)
     class(polynomial),intent(in)::      rhs
-        allocate(p%coefs_,source=rhs%coefs_)
-        p%coefs_(:) = - p%coefs_(:)
+        allocate(p%coef_,source=rhs%coef_)
+        p%coef_(:) = - p%coef_(:)
     end function negativePoly
     !--
     elemental type(polynomial) function ppMinus(lhs,rhs) result(p)
@@ -239,7 +321,7 @@ contains
         call p%init(ld+rd)
         do j=0,ld
             do i=0,rd
-                p%coefs_(i+j) = p%coefs_(i+j) + lhs%coefs_(j)*rhs%coefs_(i)
+                p%coef_(i+j) = p%coef_(i+j) + lhs%coef_(j)*rhs%coef_(i)
             enddo
         enddo
     end function ppMultiply
@@ -248,8 +330,8 @@ contains
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
         if(rhs/=zero) then
-            allocate(p%coefs_,source=lhs%coefs_)
-            p%coefs_ = rhs * p%coefs_
+            allocate(p%coef_,source=lhs%coef_)
+            p%coef_ = rhs * p%coef_
         else
             p = zeroPolynomial()
         endif
@@ -264,8 +346,8 @@ contains
     elemental type(polynomial) function psDivide(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
-        allocate(p%coefs_,source=lhs%coefs_)
-        p%coefs_ = p%coefs_ / rhs
+        allocate(p%coef_,source=lhs%coef_)
+        p%coef_ = p%coef_ / rhs
     end function psDivide
     !--
     elemental logical(lp) function ppjdeq(lhs,rhs) result(l)
@@ -298,7 +380,7 @@ contains
     
     !---------------------
     elemental type(polynomial) function zeroPolynomial() result(z)
-        allocate(z%coefs_(0:0)); z%coefs_ = zero
+        allocate(z%coef_(0:0)); z%coef_ = zero
     end function zeroPolynomial
     
     

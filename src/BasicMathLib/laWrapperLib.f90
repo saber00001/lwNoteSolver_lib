@@ -16,6 +16,7 @@ implicit none
 !dir$ if .not. defined(without_imkl)
     public:: solveSymmetryLES
     public:: eigenSymTriDiagonal
+    public:: inverseGeneralSquareMat
 !dir$ end if
     
     
@@ -85,6 +86,18 @@ contains
 !dir$ end if
     
     
+    
+!dir$ if defined (without_imkl)
+!dir$ else
+    pure subroutine inverseGeneralSquareMat(a)
+    real(rp),dimension(:,:),intent(inout)::     a
+    integer(isp),allocatable,dimension(:)::     ipiv
+        allocate(ipiv(max(1,min(size(a,dim=1),size(a,dim=2)))))
+        call getrf(a,ipiv)
+        call getri(a,ipiv)
+    end subroutine inverseGeneralSquareMat
+!dir$ end if
+    
     !input a [(2:n,1),(1:n,2),(1:n-1,3)]
     !refer to chasing method
     !limiting: abs(a)=>(a(1,2)>a(1,3)>0),((a(i,2)>a(i,1)+a(i,3)),(a(n,2)>a(n,1))
@@ -125,6 +138,9 @@ contains
         call dttrsb(a(2:n,1),a(1:n,2),a(1:n-1,3),b)
     end subroutine solveTridiagonalLES
 !dir$ end if
+    
+    
+    
     
     
     

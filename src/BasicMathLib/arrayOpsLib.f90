@@ -110,12 +110,38 @@ contains
     end function polyval
     
 !---------------------------------------------    
-    pure function diag(m)
+    !pure function diag(m)
+    !real(rp),dimension(:,:),intent(in)::    m
+    !real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag
+    !integer(ip)::                           i
+    !    forall(i=1:size(diag)) diag(i)=m(i,i)
+    !end function diag
+    pure function diag_n(m,k)
+    real(rp),dimension(:),intent(in)::                    m
+    integer(ip),intent(in)::                              k
+    real(rp),dimension(size(m)+abs(k),size(m)+abs(k))::   diag_n
+    integer(ip)::                                         i,j,n
+    n = size(r)
+    diag1_n(:,:) = 0.d0
+    if(k>=0) then
+        do i = 1,n
+            diag1_n(i,i+k) = m(i)
+        end do
+    else if(k<0) then
+        do j = 1,n
+            diag1_n(j+abs(k),j) = m(j)
+        end do
+    end if
+    !forall(i=1:size(diag_n)) diag_n(i)=m(i,i)
+    
+    end function diag_n
+    
+    pure function diag_nn(m)
     real(rp),dimension(:,:),intent(in)::    m
-    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag
+    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag_nn
     integer(ip)::                           i
-        forall(i=1:size(diag)) diag(i)=m(i,i)
-    end function diag
+        forall(i=1:size(diag_nn)) diag_nn(i)=m(i,i)
+    end function diag_nn
     
     pure real(rp) function trace(m)
     real(rp),dimension(:,:),intent(in)::    m

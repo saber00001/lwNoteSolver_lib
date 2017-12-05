@@ -48,6 +48,11 @@ implicit none
         procedure:: integeriseq
     end interface
     
+    interface diag
+        procedure:: diag_n
+        procedure:: diag_nn
+    end interface
+    
 contains
 
 !-------------------------------------------------------

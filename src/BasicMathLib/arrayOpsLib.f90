@@ -89,12 +89,16 @@ contains
     real(rp),dimension(:),intent(in)::  v
     integer(ip),intent(in)::            p
     integer(ip)::                       i
-        if(p>0) then
-            norm = sum(abs(v)**p)**(1._rp/p)
+        if(p==2) then
+            norm = norm2(v)
+        elseif(p==1) then
+            norm = sum(abs(v))
         elseif(p==0) then
-            norm = count( v /= [(0._rp,i=1,size(v))] )
-        else!let minus p be the infinity norm
-            norm = maxval(abs(v)) 
+            norm = count(v /= [(0._rp,i=1,size(v))])
+        elseif(p>2) then
+            norm = sum(abs(v)**p)**(1._rp/p)
+        else
+            norm = maxval(abs(v))
         endif
     end function norm
     
@@ -125,7 +129,9 @@ contains
             trace = trace + m(i,i)
         enddo
     end function trace
-
+    
+    
+    
 
 !---------------------inner product--------------------------------
     !--

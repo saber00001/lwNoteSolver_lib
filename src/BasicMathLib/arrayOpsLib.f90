@@ -1,5 +1,5 @@
 module arrayOpsLib
-use constants, only:ip,rp,lp,zero
+use constants, only:ip,rp,lp,zero,swap
 implicit none
 
     private
@@ -133,11 +133,11 @@ contains
         allocate(diagCreateMatrix(p+n,p+n))
         diagCreateMatrix = 0._rp
         if(k>=0) then
-            do i = 1 , n
+            do i=1,n
                 diagCreateMatrix(i,i+k) = m(i)
             enddo
         elseif(k<0) then
-            do j = 1 , n
+            do j=1,n
                 diagCreateMatrix(j+p,j) = m(j)
             enddo
         endif 
@@ -150,7 +150,6 @@ contains
         forall(i=1:size(diagExtractElement)) diagExtractElement(i)=m(i,i)
     end function diagExtractElement
     
-    
     !----
     pure real(rp) function trace(m)
     real(rp),dimension(:,:),intent(in)::    m
@@ -161,26 +160,20 @@ contains
         enddo
     end function trace
     
-    
     !---
     pure subroutine sortOneDimension(array,location)
     real(rp),dimension(:),intent(inout)::       array
-    integer(ip),dimension(:),intent(inout)::    location
-    integer(ip)::                               i,k,lo,n
-    real(rp)::                                  temp
+    integer(ip),dimension(:),intent(out)::      location
+    integer(ip)::                               i,k,n
         n = size(array) 
-        do i = 1 , n
+        do i=1,n
             location(i) = i
         end do
-        do i = n-1 , 1 , -1
-            do k = 1 , i
+        do i=n-1,1,-1
+            do k=1,i
                 if(array(k)>array(k+1)) then
-                    temp = array(k)
-                    array(k) = array(k+1)
-                    array(k+1) = temp
-                    lo = location(k)
-                    location(k) = location(k+1)
-                    location(k+1) = lo
+                    call swap(array(k),array(k+1))
+                    call swap(location(k),location(k+1))
                 end if
             end do
         end do
@@ -188,9 +181,9 @@ contains
     !--
     pure subroutine sortTwoDimension(array,location)
     real(rp),dimension(:,:),intent(inout)::     array
-    integer(ip),dimension(:,:),intent(inout)::  location
+    integer(ip),dimension(:,:),intent(out)::    location
     integer(ip)::                               j
-        do j = 1 , size(array,dim=2)
+        do j=1,size(array,dim=2)
             call sort(array(:,j),location(:,j))
         end do
     end subroutine sortTwoDimension
@@ -201,11 +194,10 @@ contains
     real(rp),dimension(size(x))::       cumprod
     integer(ip)::                       i
         cumprod(1) = x(1)
-        do i = 2 , size(x)
+        do i=2,size(x)
             cumprod(i) = cumprod(i-1)*x(i)  
         end do   
     end function cumprod
-    
     
     
     

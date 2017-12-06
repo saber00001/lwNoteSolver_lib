@@ -123,7 +123,7 @@ contains
         enddo
     end function polyval
     
-!---------------------------------------------    
+    !---------
     pure function diagCreateMatrix(m,k)
     real(rp),dimension(:),intent(in)::                    m
     integer(ip),intent(in)::                              k
@@ -133,23 +133,25 @@ contains
         allocate(diagCreateMatrix(p+n,p+n))
         diagCreateMatrix = 0._rp
         if(k>=0) then
-            do i = 1,n
+            do i = 1 , n
                 diagCreateMatrix(i,i+k) = m(i)
             enddo
         elseif(k<0) then
-            do j = 1,n
+            do j = 1 , n
                 diagCreateMatrix(j+p,j) = m(j)
             enddo
         endif 
     end function diagCreateMatrix
-!-----------
+    !--
     pure function diagExtractElement(m)
     real(rp),dimension(:,:),intent(in)::    m
     real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diagExtractElement
     integer(ip)::                           i
         forall(i=1:size(diagExtractElement)) diagExtractElement(i)=m(i,i)
     end function diagExtractElement
-!-----------------------------------------------
+    
+    
+    !----
     pure real(rp) function trace(m)
     real(rp),dimension(:,:),intent(in)::    m
     integer(ip)::                           i
@@ -158,66 +160,54 @@ contains
             trace = trace + m(i,i)
         enddo
     end function trace
-!-----------------------------------------------
-    pure subroutine sortOneDimension(matrix1,location1)
-    real(rp),intent(inout)::                matrix1(:)         !input matrix
-    integer(ip),intent(inout)::             location1(:)      !record the original position
-    integer(ip)::                           i,k,lo,n
-    real(rp)::                              temp
-        n = size(matrix1) 
-        do i=1,n
-            location1(i) = i
+    
+    
+    !---
+    pure subroutine sortOneDimension(array,location)
+    real(rp),dimension(:),intent(inout)::       array
+    integer(ip),dimension(:),intent(inout)::    location
+    integer(ip)::                               i,k,lo,n
+    real(rp)::                                  temp
+        n = size(array) 
+        do i = 1 , n
+            location(i) = i
         end do
-        do i =n-1,1,-1            
-            do k =1,i
-                if(matrix1(k)>matrix1(k+1)) then
-                    temp = matrix1(k)
-                    matrix1(k) = matrix1(k+1) 
-                    matrix1(k+1) = temp
-                    lo = location1(k)
-                    location1(k) = location1(k+1) 
-                    location1(k+1) = lo
+        do i = n-1 , 1 , -1
+            do k = 1 , i
+                if(array(k)>array(k+1)) then
+                    temp = array(k)
+                    array(k) = array(k+1)
+                    array(k+1) = temp
+                    lo = location(k)
+                    location(k) = location(k+1)
+                    location(k+1) = lo
                 end if
             end do
         end do
     end subroutine sortOneDimension
-!-----------------------
-    pure subroutine sortTwoDimension(matrix1,location1)
-    real(rp),intent(inout)::                  matrix1(:,:)   !input matrix
-    real(rp),intent(inout)::                  location1(:,:) !record the original position
-    integer(ip)::                             i,j,k,lo,n,m
-    real(rp) ::                               temp
-        n = size(matrix1,1)
-        m = size(matrix1,2)
-        do j = 1,m            
-            do i=1,n
-                location1(i,j) = i
-            end do           
-            do i =n-1,1,-1            
-                do k =1,i
-                    if(matrix1(k,j)>matrix1(k+1,j)) then
-                        temp = matrix1(k,j)
-                        matrix1(k,j) = matrix1(k+1,j) 
-                        matrix1(k+1,j) = temp
-                        lo = location1(k,j)
-                        location1(k,j) = location1(k+1,j) 
-                        location1(k+1,j) = lo
-                    end if
-                end do
-            end do
-        end do        
+    !--
+    pure subroutine sortTwoDimension(array,location)
+    real(rp),dimension(:,:),intent(inout)::     array
+    integer(ip),dimension(:,:),intent(inout)::  location
+    integer(ip)::                               j
+        do j = 1 , size(array,dim=2)
+            call sort(array(:,j),location(:,j))
+        end do
     end subroutine sortTwoDimension
-!---------------------------------------------
+    
+    !-----
     pure function cumprod(x) 
-    real(rp),intent(in)::       x(:)
-    integer(ip)::               i,n,j
-    real(rp) ::                 cumprod(size(x))
-        n = size(x)
+    real(rp),dimension(:),intent(in)::  x
+    real(rp),dimension(size(x))::       cumprod
+    integer(ip)::                       i
         cumprod(1) = x(1)
-        do i=2,n
+        do i = 2 , size(x)
             cumprod(i) = cumprod(i-1)*x(i)  
-        end do        
+        end do   
     end function cumprod
+    
+    
+    
     
 !---------------------inner product--------------------------------
     !--

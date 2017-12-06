@@ -6,7 +6,7 @@ implicit none
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
     public:: magSqr,mag,angle,normal,para,orth,norm,polyval
-    public:: diag,trace
+    public:: trace,diag,sort,cumprod
     
 !---------------------------------------------
     interface operator(*)
@@ -49,8 +49,13 @@ implicit none
     end interface
     
     interface diag
-        procedure:: diag_n
-        procedure:: diag_nn
+        procedure:: diagCreateMatrix
+        procedure:: diagExtractElement
+    end interface
+    
+    interface sort
+        procedure:: sortOneDimension
+        procedure:: sortTwoDimension
     end interface
     
 contains
@@ -119,39 +124,32 @@ contains
     end function polyval
     
 !---------------------------------------------    
-    !pure function diag(m)
-    !real(rp),dimension(:,:),intent(in)::    m
-    !real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag
-    !integer(ip)::                           i
-    !    forall(i=1:size(diag)) diag(i)=m(i,i)
-    !end function diag
-    pure function diag_n(m,k)
+    pure function diagCreateMatrix(m,k)
     real(rp),dimension(:),intent(in)::                    m
     integer(ip),intent(in)::                              k
-    real(rp),dimension(size(m)+abs(k),size(m)+abs(k))::   diag_n
-    integer(ip)::                                         i,j,n
-    n = size(r)
-    diag1_n(:,:) = 0.d0
-    if(k>=0) then
-        do i = 1,n
-            diag1_n(i,i+k) = m(i)
-        end do
-    else if(k<0) then
-        do j = 1,n
-            diag1_n(j+abs(k),j) = m(j)
-        end do
-    end if
-    !forall(i=1:size(diag_n)) diag_n(i)=m(i,i)
-    
-    end function diag_n
-    
-    pure function diag_nn(m)
+    real(rp),dimension(:,:),allocatable::                 diagCreateMatrix
+    integer(ip)::                                         i,j,n,p
+        p = abs(k); n = size(m)
+        allocate(diagCreateMatrix(p+n,p+n))
+        diagCreateMatrix = 0._rp
+        if(k>=0) then
+            do i = 1,n
+                diagCreateMatrix(i,i+k) = m(i)
+            enddo
+        elseif(k<0) then
+            do j = 1,n
+                diagCreateMatrix(j+p,j) = m(j)
+            enddo
+        endif 
+    end function diagCreateMatrix
+!-----------
+    pure function diagExtractElement(m)
     real(rp),dimension(:,:),intent(in)::    m
-    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diag_nn
+    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diagExtractElement
     integer(ip)::                           i
-        forall(i=1:size(diag_nn)) diag_nn(i)=m(i,i)
-    end function diag_nn
-    
+        forall(i=1:size(diagExtractElement)) diagExtractElement(i)=m(i,i)
+    end function diagExtractElement
+!-----------------------------------------------
     pure real(rp) function trace(m)
     real(rp),dimension(:,:),intent(in)::    m
     integer(ip)::                           i
@@ -160,10 +158,67 @@ contains
             trace = trace + m(i,i)
         enddo
     end function trace
+!-----------------------------------------------
+    pure subroutine sortOneDimension(matrix1,location1)
+    real(rp),intent(inout)::                matrix1(:)         !input matrix
+    integer(ip),intent(inout)::             location1(:)      !record the original position
+    integer(ip)::                           i,k,lo,n
+    real(rp)::                              temp
+        n = size(matrix1) 
+        do i=1,n
+            location1(i) = i
+        end do
+        do i =n-1,1,-1            
+            do k =1,i
+                if(matrix1(k)>matrix1(k+1)) then
+                    temp = matrix1(k)
+                    matrix1(k) = matrix1(k+1) 
+                    matrix1(k+1) = temp
+                    lo = location1(k)
+                    location1(k) = location1(k+1) 
+                    location1(k+1) = lo
+                end if
+            end do
+        end do
+    end subroutine sortOneDimension
+!-----------------------
+    pure subroutine sortTwoDimension(matrix1,location1)
+    real(rp),intent(inout)::                  matrix1(:,:)   !input matrix
+    real(rp),intent(inout)::                  location1(:,:) !record the original position
+    integer(ip)::                             i,j,k,lo,n,m
+    real(rp) ::                               temp
+        n = size(matrix1,1)
+        m = size(matrix1,2)
+        do j = 1,m            
+            do i=1,n
+                location1(i,j) = i
+            end do           
+            do i =n-1,1,-1            
+                do k =1,i
+                    if(matrix1(k,j)>matrix1(k+1,j)) then
+                        temp = matrix1(k,j)
+                        matrix1(k,j) = matrix1(k+1,j) 
+                        matrix1(k+1,j) = temp
+                        lo = location1(k,j)
+                        location1(k,j) = location1(k+1,j) 
+                        location1(k+1,j) = lo
+                    end if
+                end do
+            end do
+        end do        
+    end subroutine sortTwoDimension
+!---------------------------------------------
+    pure function cumprod(x) 
+    real(rp),intent(in)::       x(:)
+    integer(ip)::               i,n,j
+    real(rp) ::                 cumprod(size(x))
+        n = size(x)
+        cumprod(1) = x(1)
+        do i=2,n
+            cumprod(i) = cumprod(i-1)*x(i)  
+        end do        
+    end function cumprod
     
-    
-    
-
 !---------------------inner product--------------------------------
     !--
     pure real(rp) function vvinnerproduct(lhs,rhs) result(p)

@@ -207,7 +207,6 @@ contains
     
     
     
-    
 !---------------------inner product--------------------------------
     !--
     pure real(rp) function vvinnerproduct(lhs,rhs) result(p)

@@ -11,6 +11,7 @@ implicit none
     private
     public::    odeEuler
     public::    odeRK4,odeSystemRK4
+    public::    odeRK2
     
     
 !-------------------------------------------------------------------    
@@ -109,5 +110,25 @@ contains
             d = dydx(i,x,y)
         end function d
     end subroutine odeSystemRK4_TVD_1step
-
+    
+    
+!------------------------------------------------------------------- 
+    pure real(rp) function odeRK2(t, tn, x, n) result(y)
+    real(rp),intent(in)::           t,tn,x   
+    integer(ip),intent(in)::        n   
+    integer(ip)::                   m,j
+    real(rp)::                      h,k1,k2,t1,x1
+        t1 = t
+        x1 = x
+        m = 10
+        h = (tn-t)/m
+        do j = 1,m
+            k1 = -h/(sqrt(2.*n+1-x1**2) - .5*x1*sin(2.*t1)/(2.*n+1-x1**2))
+            t1 = t1 + h
+            k2 = -h/(sqrt(2.*n+1-(x1+k1)**2) - .5*x1*sin(2.*t1)/(2.*n+1-(x1+k1)**2))
+            x1 = x1 + .5*(k1 + k2)
+        end do
+        y = x1  
+    end function odeRK2
+    
 end module odelib

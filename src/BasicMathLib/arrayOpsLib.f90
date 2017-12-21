@@ -187,7 +187,6 @@ contains
             call sort(array(:,j),location(:,j))
         end do
     end subroutine sortTwoDimension
-    
     !-----
     pure function cumprod(x) 
     real(rp),dimension(:),intent(in)::  x

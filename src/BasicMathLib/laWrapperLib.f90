@@ -17,6 +17,7 @@ implicit none
     public:: solveSymmetryLES
     public:: eigenSymTriDiagonal
     public:: inverseGeneralSquareMat
+    public:: eigenTriDiagonal
 !dir$ end if
     
     
@@ -49,6 +50,23 @@ contains
             call stev(d,eva)
         endif
     end subroutine eigenSymTriDiagonal
+    !call steqr(d,e,z,compz,info)
+    ![d]    input the diagonal vector with size(n) and output the n eigenvalues in ascending order
+    ![e]    input contains the off-diagonal elements of T with size(n-1)
+    ![evc]  output n*n orthonomal eigenvector
+    !Find all eigenvalues and eigenvectors of a tridiagonal matrix T
+    pure subroutine eigenTriDiagonal(d,e,evc)
+    real(rp),dimension(:),intent(inout)::                           d
+    real(rp),dimension(:),intent(in)::                              e
+    complex(rp),dimension(:,:),intent(out),optional::               evc
+    
+        if(present(evc)) then
+            call steqr(d,e,evc)
+        else
+            call steqr(d,e)
+        endif
+    
+    end subroutine eigenTriDiagonal
     
     
 !dir$ if defined (without_imkl)

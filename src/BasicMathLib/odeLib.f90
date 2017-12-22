@@ -13,7 +13,6 @@ implicit none
     public::    odeRK4,odeSystemRK4
     public::    odeRK2
     
-    
 !-------------------------------------------------------------------    
     interface odeEuler
         procedure:: odeEuler_1step
@@ -27,10 +26,15 @@ implicit none
     end interface odeRK4
 
 !-------------------------------------------------------------------
+    interface odeRK2
+        procedure:: odeRK2_TVD_1step
+        procedure:: odeRK2_TVD_nstep
+    end interface odeRK2
+    
+!-------------------------------------------------------------------
     interface odeSystemRK4
         procedure:: odeSystemRK4_TVD_1step
     end interface odeSystemRK4
-    
     
     
 !-------------------------------------------------------------------
@@ -75,10 +79,10 @@ contains
     real(rp),intent(in)::       dx,x0,y0
     real(rp)::                  k1,k2,k3,k4
         k1 = dydx(x0,y0)
-        k2 = dydx(x0 + 0.5d0*dx,y0 + 0.5d0*dx*k1)
-        k3 = dydx(x0 + 0.5d0*dx,y0 + 0.5d0*dx*k2)
+        k2 = dydx(x0 + 0.5_rp*dx,y0 + 0.5_rp*dx*k1)
+        k3 = dydx(x0 + 0.5_rp*dx,y0 + 0.5_rp*dx*k2)
         k4 = dydx(x0 + dx,y0 + dx*k3)
-        y = y0 + (1.d0/6.d0)*dx*(k1 + 2.d0*k2 + 2.d0*k3 + k4)
+        y = y0 + (1._rp/6._rp)*dx*(k1 + 2._rp*k2 + 2._rp*k3 + k4)
     end function odeRK4_TVD_1step
 
     pure function odeRK4_TVD_nstep(dydx,dx,x0,y0,n) result(y)
@@ -110,25 +114,28 @@ contains
             d = dydx(i,x,y)
         end function d
     end subroutine odeSystemRK4_TVD_1step
-    
-    
-!------------------------------------------------------------------- 
-    pure real(rp) function odeRK2(t, tn, x, n) result(y)
-    real(rp),intent(in)::           t,tn,x   
-    integer(ip),intent(in)::        n   
-    integer(ip)::                   m,j
-    real(rp)::                      h,k1,k2,t1,x1
-        t1 = t
-        x1 = x
-        m = 10
-        h = (tn-t)/m
-        do j = 1,m
-            k1 = -h/(sqrt(2.*n+1-x1**2) - .5*x1*sin(2.*t1)/(2.*n+1-x1**2))
-            t1 = t1 + h
-            k2 = -h/(sqrt(2.*n+1-(x1+k1)**2) - .5*x1*sin(2.*t1)/(2.*n+1-(x1+k1)**2))
-            x1 = x1 + .5*(k1 + k2)
+
+!---------------------------------------------------------------------
+    pure real(rp) function odeRK2_TVD_1step(dydx,dx,x0,y0) result(y)
+    procedure(absdydx)::        dydx
+    real(rp),intent(in)::       dx,x0,y0
+    real(rp)::                  k1,k2
+        k1 = dydx(x0,y0)
+        k2 = dydx(x0 + dx,y0 + dx*k1)
+        y = y0 + 0.5_rp*dx*(k1 + k2)
+    end function odeRK2_TVD_1step
+
+    pure function odeRK2_TVD_nstep(dydx,dx,x0,y0,n) result(y)
+    procedure(absdydx)::        dydx
+    real(rp),intent(in)::       dx,x0,y0
+    integer(ip),intent(in)::    n
+    real(rp),dimension(n)::     y
+    integer(ip)::               i
+        y(1)=odeRK2(dydx,dx,x0,y0)
+        do i=2,n
+            y(i) = odeRK2(dydx,dx,x0+dfloat(i)*dx,y(i-1))
         end do
-        y = x1  
-    end function odeRK2
+    end function odeRK2_TVD_nstep
+
     
 end module odelib

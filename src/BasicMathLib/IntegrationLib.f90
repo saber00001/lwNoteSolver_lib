@@ -328,7 +328,6 @@ contains
         else if(n<21) then
             !call GolubWelsch_eigenvalueMethod(n)
             call GlaserLiuRokhlinAlgorithm(n)
-            
         else if(n<200) then
             call hermpts_rec(n)
         else
@@ -369,9 +368,9 @@ contains
         integer(ip)::                                           k                    
         
             Hm2 = 0._rp
-            Hm1 = pi**(-1._rp/4._rp)
+            Hm1 = pi**(-0.25_rp)
             Hpm2 = 0._rp
-            Hpm1 = 0._rp       
+            Hpm1 = 0._rp
             do k = 0,n-1
                 H = -sqrt(1._rp*k/(k+1))*Hm2
                 Hp = sqrt(2._rp/(k+1))*Hm1-sqrt(1._rp*k/(k+1))*Hpm2
@@ -381,19 +380,19 @@ contains
                 Hpm1 = Hp
             end do
             x=0._rp
-            ders=0._rp                      
-            if (ibits(n,0,1)) then
+            ders=0._rp
+            if (ibits(n,0,1)==1) then
                 !zero is a root:
                 x(ishft((n-1),-1)) = 0._rp                          !x((n-1)/2) = 0 
                 ders(ishft((n+1),-1)) = Hp                          !ders((n+1)/2) = Hp        
             else
                 !find first root
                 call alg2_Herm(H,n,x(ishft(n,-1)+1),ders(ishft(n,-1)+1))
-            end if    
+            end if
         
         end subroutine first_root
         !-------------------------------------------------------
-        pure subroutine alg2_Herm(H,n,x1,d1) 
+        pure subroutine alg2_Herm(H,n,x1,d1)
         real(rp),intent(in)::                               H
         integer(ip),intent(in)::                            n
         real(rp),intent(out)::                              x1,d1
@@ -409,17 +408,17 @@ contains
             !x1 = odeRK2(0._rp,-pi/2,0._rp,n)  
             !   x1 = odeRK2(0._rp,-pi/2,0._rp,n)
             !   odeRK2_TVD_1step(dydx,dx,x0,y0)
-            x0= 0._rp
-            x11=-pi/2._rp
-            y0= 0._rp
-            dx=(x11-x0)/10
-            x2=odeRK2(dydx,dx,x0,y0,10)
-            x1=x2(10)
+            x0 = 0._rp
+            x11 = -pi/2._rp
+            y0 = 0._rp
+            dx = (x11 - x0) / 10._rp
+            x2 = odeRK2(dydx,dx,x0,y0,10)
+            x1 = x2(10)
             !scaling
-            m1 = 1/x1
+            m1 = 1._rp/x1
             !initialise
             u = 0._rp
-            up =0._rp
+            up = 0._rp
             
             !recurrence relation for Legendre polynomials
             u(1) = H
@@ -451,7 +450,7 @@ contains
                 z2 = cumprod(z1)
                 x1k = [1._rp,(z2(i),i=1,m)]
                 x1k = [(x1k(i),i=m+1,1,-1)]
-            end do  
+            end do
             
             !Update derivative
             d1 = (up.ip.x1k)
@@ -486,7 +485,7 @@ contains
                 x0=  pi/2._rp
                 x11=-pi/2._rp
                 y0= x
-                dx=(x11-x0)/10
+                dx=(x11-x0)/10._rp
                 x2=odeRK2(dydx,dx,x0,y0,10)
                 x1=x2(10)
                 h=x1-x
@@ -543,11 +542,10 @@ contains
         real(rp),dimension(:),allocatable::                     x1,w1,v1    
         integer(ip)::                                           m
         
+            m=ishft(n,-1)
             if(ibits(n,0,1)==1) then
-                m=ishft(n,-1)
                 allocate(x1(m+1),w1(m+1),v1(m+1))
             else
-                m=ishft(n,-1)
                 allocate(x1(m),w1(m),v1(m))
             end if  
             
@@ -618,10 +616,10 @@ contains
             airyrts(1:10) = airyrts_exact(1:10)                                         ! correct first 10.
         
             x_init = real(sqrt(cmplx(nu + 2**(2._rp/3._rp)*airyrts*nu**(1._rp/3._rp) + &
-            1._rp/5._rp*2**(4._rp/3._rp)*airyrts**2*nu**(-1._rp/3._rp) + &
-            (11._rp/35._rp-a**2-12._rp/175._rp*airyrts**3)/nu + &
-            (16._rp/1575._rp*airyrts+92._rp/7875._rp*airyrts**4)*2**(2._rp/3._rp)*nu**(-5._rp/3._rp) - &
-            (15152._rp/3031875._rp*airyrts**5+1088._rp/121275._rp*airyrts**2)*2**(1._rp/3._rp)*nu**(-7._rp/3._rp),kind=rp)),kind=rp)  
+                1._rp/5._rp*2**(4._rp/3._rp)*airyrts**2*nu**(-1._rp/3._rp) + &
+                (11._rp/35._rp-a**2-12._rp/175._rp*airyrts**3)/nu + &
+                (16._rp/1575._rp*airyrts+92._rp/7875._rp*airyrts**4)*2**(2._rp/3._rp)*nu**(-5._rp/3._rp) - &
+                (15152._rp/3031875._rp*airyrts**5+1088._rp/121275._rp*airyrts**2)*2**(1._rp/3._rp)*nu**(-7._rp/3._rp),kind=rp)),kind=rp)  
             x_init_airy(1:m) = x_init(m:1:-1)
      
             ! Tricomi initial guesses. Equation (2.1) in [1]. Originally in [2].
@@ -656,7 +654,8 @@ contains
         pure real(rp) function T(x) result(y)
         real(rp),intent(in)::               x
         
-            y = x**(2._rp/3._rp)*(1._rp+5._rp/48._rp*x**(-2)-5._rp/36._rp*x**(-4)+(77125._rp/82944._rp)*x**(-6)-108056875._rp/6967296._rp*x**(-8)+162375596875._rp/334430208._rp*x**(-10))
+            y = x**(2._rp/3._rp)*(1._rp + 5._rp/48._rp*x**(-2) - 5._rp/36._rp*x**(-4) + (77125._rp/82944._rp)*x**(-6) - &
+                108056875._rp/6967296._rp*x**(-8) + 162375596875._rp/334430208._rp*x**(-10))
         
         end function T
         !--------------------------------------------------------------------------
@@ -682,11 +681,10 @@ contains
         !--------------------------------------------------------------------------
         pure subroutine hermpts_asy(n)
         integer(ip),intent(in)::                        n
-        
-        !HERMPTS_ASY, fast algorithm for computing Gauss-Hermite nodes and weights 
-        !using Newton's method with polynomial evaluation via asymptotic expansions.   
-        !x = Gauss-Hermite nodes, w = quad weights, v = bary weights.
-        call disableProgram    
+            !HERMPTS_ASY, fast algorithm for computing Gauss-Hermite nodes and weights 
+            !using Newton's method with polynomial evaluation via asymptotic expansions.
+            !x = Gauss-Hermite nodes, w = quad weights, v = bary weights.
+            call disableProgram    
         end subroutine hermpts_asy
         !--------------------------------------------------------------------------
         

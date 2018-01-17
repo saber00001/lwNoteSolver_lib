@@ -7,6 +7,7 @@ implicit none
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
     public:: magSqr,mag,angle,normal,para,orth,norm,polyval
     public:: trace,diag,sort,cumprod
+    public:: compositionNext,colexNext
     
 !---------------------------------------------
     interface operator(*)
@@ -142,6 +143,7 @@ contains
             enddo
         endif 
     end function diagCreateMatrix
+    
     !--
     pure function diagExtractElement(m)
     real(rp),dimension(:,:),intent(in)::    m
@@ -178,6 +180,7 @@ contains
             end do
         end do
     end subroutine sortOneDimension
+    
     !--
     pure subroutine sortTwoDimension(array,location)
     real(rp),dimension(:,:),intent(inout)::     array
@@ -187,6 +190,7 @@ contains
             call sort(array(:,j),location(:,j))
         end do
     end subroutine sortTwoDimension
+    
     !-----
     pure function cumprod(x) 
     real(rp),dimension(:),intent(in)::  x
@@ -197,6 +201,68 @@ contains
             cumprod(i) = cumprod(i-1)*x(i)  
         end do   
     end function cumprod
+    
+    !computes the compositions of the integer n into k parts.
+    !like n=2, k=2: (2,0);(1,1);(0,2) | totally 3 kinds, and this subroutine accomplish this order for next
+    !On the first call to this routine, set MORE = FALSE.  The routine will compute the first element in the 
+    !sequence of compositions and return it, as well as setting MORE = TRUE.  If more compositions are desired, 
+    !call again, and again.  Each time, the routine will return with a new composition.
+    !refer to http://people.sc.fsu.edu/~jburkardt/f_src/sandia_sparse/sandia_sparse.f90 %comp_next
+    pure subroutine compositionNext(n,k,a,more,h,t)
+    integer(ip),intent(in)::                n,k
+    integer(ip),intent(inout)::             h,t
+    integer(ip),dimension(k),intent(inout)::a
+    logical(lp),intent(inout)::             more
+            
+        if(.not.more) then
+            t = n; h = 0
+            a = 0; a(1) = n
+        else
+            if(t>1) h = 0
+            h = h + 1
+            t = a(h)
+            a(h) = 0
+            a(1) = t - 1
+            a(h+1) = a(h+1) + 1
+        endif
+        more = a(k) /= n
+        
+    end subroutine compositionNext
+    
+    !-------------------------------------
+    !    the vectors are produced in colexical order, starting with
+    !    (0,        0,        ...,0),
+    !    (1,        0,        ...,0),
+    !     ...
+    !    (base(1)-1,0,        ...,0)
+    !
+    !    (0,        1,        ...,0)
+    !    (1,        1,        ...,0)
+    !    ...
+    !    (base(1)-1,1,        ...,0)
+    !
+    !    (0,        2,        ...,0)
+    !    (1,        2,        ...,0)
+    !    ...
+    !    (base(1)-1,base(2)-1,...,base(dim_num)-1).
+    !refer to http://people.sc.fsu.edu/~jburkardt/f_src/sandia_sparse/sandia_sparse.f90 %vec_colex_next2
+    pure subroutine colexNext(n,base,a,more)
+    integer(ip),intent(in)::                n
+    integer(ip),dimension(:),intent(in)::   base
+    integer(ip),dimension(:),intent(inout)::a
+    logical(lp),intent(inout)::             more
+    integer(ip)::                           i
+        if(.not.more) then
+            a = 0; more = .true.
+        else
+            do i=1,n
+                a(i) = a(i) + 1
+                if(a(i)<base(i)) return
+                a(i) = 0
+            enddo
+            more = .false.
+        endif
+    end subroutine colexNext
     
     
     

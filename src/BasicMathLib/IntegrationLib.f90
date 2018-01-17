@@ -4,6 +4,7 @@
 module IntegrationLib
 use constants
 use arrayOpsLib
+use stringOpsLib
 use SpecialFunctionLib
 use fftWrapperLib
 use LAwrapperLib
@@ -14,21 +15,23 @@ implicit none
     
     public:: integrate
     !--
-    public:: GaussQuadrature
+    public:: QuadratureRule
     public:: GaussLegendre
     public:: GaussHermite
     public:: ClenshawCurtis
     public:: ClenshawCurtisNative
     !--
-    public:: integrateTrapezoid
-    public:: integrateAdaptiveSimpson
-    
+    public:: SparseGridSize
+    public:: SparseGrid
+    !--
+    public:: integrateTrapezoid_f1
+    public:: integrateAdaptiveSimpson_f1
     
     
 !------------------------------------------------
     interface integrate
         procedure:: integrateAdaptiveSimpson_f1
-        procedure:: integrateGaussRule
+        procedure:: integrateQuadratureRule
     end interface integrate
     !--
 
@@ -36,19 +39,6 @@ implicit none
     interface GaussHermite
         procedure:: GaussHermitePhys
     end interface
-
-!---------------------------------------------------------    
-!method for integrate one-dimensional function
-    interface integrateAdaptiveSimpson
-        procedure:: integrateAdaptiveSimpson_f1
-    end interface integrateAdaptiveSimpson
-    
-    !not good
-    interface integrateTrapezoid
-        procedure::  integrateTrapezoid_f1
-    end interface integrateTrapezoid
-!---------------------------------------------------------
-
     
 
 contains
@@ -140,36 +130,41 @@ contains
     
     
     !-------------------------------------------------
-    pure real(rp) function integrateGaussRule(f,ruleType,Order,normalCoef) result(r)
+    real(rp) function integrateQuadratureRule(f,ruleType,Order,normalCoef) result(r)
     procedure(absf1)::              f
     character(*),intent(in)::       ruleType
     integer(ip),intent(in)::        Order
     real(rp),optional,intent(in)::  normalCoef
     real(rp),dimension(ishft(Order,-1)+1):: x,w
     
-        call GaussQuadrature(ruleType,x,w)
+        call QuadratureRule(ruleType,x,w)
         r = merge(normalCoef,1._rp,present(normalCoef)) * sum(f(x)*w)
         
-    end function integrateGaussRule
+    end function integrateQuadratureRule
     
     
 
 !---------------------------------------------------
-    pure subroutine GaussQuadrature(ruletype,quadx,quadw)
-    character(*),intent(in)::                       ruleType
-    real(rp),dimension(:),intent(out)::             quadx,quadw
+    subroutine QuadratureRule(rule,quadx,quadw)
+    character(*),intent(in)::               rule
+    real(rp),dimension(:),intent(out)::     quadx,quadw
+    character(len(rule))::                  r
 
-        select case(adjustl(ruleType))
-        case('Legendre','legendre')
+        r = rule
+        call lowerstring(r)
+
+        select case(adjustl(r))
+        case('gausslegendre','gl','legendre')
             call GaussLegendre(quadx,quadw)
-        case('Hermite','hermite')
-           
+        case('gausshermite','gh','hermite')
             call GaussHermite(quadx,quadw)
+        case('clenshawcurtis','cc')
+            call ClenshawCurtis(quadx,quadw)
         case default
             quadx = nanrp; quadw = nanrp
         end select
         
-    end subroutine GaussQuadrature
+    end subroutine QuadratureRule
     
     
 !refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
@@ -307,6 +302,7 @@ contains
         end subroutine asymptoticMethod
         
     end subroutine GaussLegendre
+    
 !------------------------------------------------------------------------------------
 !refer to https://github.com/chebfun/chebfun/blob/development/hermpts.m
 !calculate \[ \int_{-inf}^{inf}exp(-x^2)f(x) dx \],(refer to wiki)
@@ -551,7 +547,7 @@ contains
             
             call Hermpts_recParameter(n,m,x1,w1,v1)
             
-            if (ibits(n,0,1)==1) then                                   !fold out
+            if (ibits(n,0,1)==1) then   !fold out
                 quadx = [-x1(m+1:1:-1),x1(2:m+1)]
                 quadw = [w1(m+1:1:-1),w1(2:m+1)]
                 quadw = (spi/sum(quadw))*quadw
@@ -586,17 +582,18 @@ contains
             end do
         
             x1 = x0/sqrt(2._rp)
-            w1 = (exp(-x1**2)/dval**2)                                  !quadrature weights
-            v1 = exp(-x1**2/2._rp)/dval                                 !Barycentric weights
+            w1 = (exp(-x1**2)/dval**2)              !quadrature weights
+            v1 = exp(-x1**2/2._rp)/dval             !Barycentric weights
         end subroutine Hermpts_recParameter
+        
         !-------------------------------------------------------
         pure subroutine HermiteInitialGuesses(m,n,x)
-        integer(ip),intent(in)::                            m,n
-        real(rp),dimension(:),intent(out)::                 x
-        integer::                                           i,k
-        real(rp)::                                          a,nu,p,tin
-        real(rp),dimension(m)::                             airyrts,x_init,x_init_airy,Tnk0,rhs,val,dval,dTnk0,tnk,x_init_sin 
-        real(rp),dimension(10)::                            airyrts_exact
+        integer(ip),intent(in)::                    m,n
+        real(rp),dimension(:),intent(out)::         x
+        integer::                                   i,k
+        real(rp)::                                  a,nu,p,tin
+        real(rp),dimension(m)::                     airyrts,x_init,x_init_airy,Tnk0,rhs,val,dval,dTnk0,tnk,x_init_sin 
+        real(rp),dimension(10)::                    airyrts_exact
             ! hermiteintitialguesses(n), Initial guesses for Hermite zeros.
             if(ibits(n,0,1)==1) then
                 a =  0.5_rp
@@ -608,12 +605,13 @@ contains
                 airyrts(i) = -T(3._rp/8._rp*pi*(4._rp*i-1._rp))
             end do
         
-            airyrts_exact = [-2.338107410459762_rp,-4.087949444130970_rp,-5.520559828095555_rp,&               ! Exact Airy roots.
+            ! Exact Airy roots.
+            airyrts_exact = [-2.338107410459762_rp,-4.087949444130970_rp,-5.520559828095555_rp,&    
                              -6.786708090071765_rp,-7.944133587120863_rp,-9.022650853340979_rp,&
                             -10.040174341558084_rp,-11.008524303733260_rp,-11.936015563236262_rp,&
                             -12.828776752865757_rp]
             
-            airyrts(1:10) = airyrts_exact(1:10)                                         ! correct first 10.
+            airyrts(1:10) = airyrts_exact(1:10)     ! correct first 10.
         
             x_init = real(sqrt(cmplx(nu + 2**(2._rp/3._rp)*airyrts*nu**(1._rp/3._rp) + &
                 1._rp/5._rp*2**(4._rp/3._rp)*airyrts**2*nu**(-1._rp/3._rp) + &
@@ -832,5 +830,428 @@ contains
         quadw(2:nm1) = 2._rp * quadw(2:nm1)
     
     end subroutine ClenshawCurtisNative
+    
+    
+    
+!----------------------------------------------------
+    !refer to http://people.sc.fsu.edu/~jburkardt/f_src/sandia_sparse/sandia_sparse.f90
+    pure integer(ip) function SparseGridSize(dim,level,quadratureRule) result(n)
+    integer(ip),intent(in)::        dim,level
+    character(*),intent(in)::       quadratureRule
+    character(len(quadratureRule))::rule
+    
+        rule = quadratureRule
+        call lowerstring(rule)
+        
+        if(rule == 'cc' .or. rule == 'clenshawcurtis') then
+            n = cc(dim,level)           !close set| cc[-1,1]
+        elseif(rule == 'gh' .or. rule == 'gausshermite' .or. &
+            rule == 'gl' .or. rule == 'gausslegendre') then
+            n = openWeakNest(dim,level) !open set | legendre(-1,1)
+        else
+            call disableprogram
+        endif
+    
+    contains
+    
+        pure integer(ip) function cc(dim,level)
+        integer(ip),intent(in)::        dim,level
+        integer(ip)::                   i,j,h,t
+        integer(ip),dimension(0:level)::newPoint1d
+        integer(ip),dimension(dim)::    level1d
+        logical(lp)::                   more
+        
+            if(level<0) then
+                cc = 0
+            elseif(level==0) then
+                cc = 1
+            else
+                newPoint1d(0) = 1; newPoint1d(1) = 2
+                j = 1
+                do i=2,level
+                    j = j*2
+                    newPoint1d(i) = j
+                enddo
+                
+                cc = 0
+                do i=0,level
+                    more = .false.
+                    h = 0; t = 0
+                    do; call compositionNext(i,dim,level1d,more,h,t)
+                        cc = cc + product(newPoint1d(level1d))
+                        if(.not.more) exit
+                    enddo
+                enddo
+            endif
+            
+        end function cc
+        
+        !--
+        pure integer(ip) function openWeakNest(dim,level) result(sz)
+        integer(ip),intent(in)::        dim,level
+        integer(ip)::                   i,j,h,t,levelstart
+        integer(ip),dimension(dim)::    level1d,newPoint1d
+        logical(lp)::                   more
+        
+            if(level==0) then
+                sz = 1; return
+            endif
+        
+            if(dim==1) then
+                levelstart = level
+                sz = 1
+            else
+                levelstart = 0
+                sz = 0
+            endif
+            
+            do i=levelstart,level
+                more = .false.
+                h = 0; t = 0
+                do; call compositionNext(i,dim,level1d,more,h,t)!level at different dim
+                    newPoint1d = NpAtLevelOpen(level1d)
+                    do j=1,dim
+                        if(newPoint1d(j)>1) newPoint1d(j) = newPoint1d(j) - 1
+                        !due to weakly nest, onlyt 1 point nest
+                    enddo
+                    sz = sz  + product(newPoint1d)
+                    if(.not.more) exit
+                enddo 
+            enddo
+        end function openWeakNest
+        
+    end function sparseGridSize
+    
+    
+    !-----------------------------
+    !cfn -> close fully nest    |cc
+    !ofn -> open fully nest     |fejer1(f1), fejer2(f2), gauss petterson(gp)
+    !onn -> open none nest      |gauss laguree(gla)
+    !own -> open weakly nest    |gl,gh
+    subroutine sparseGrid(level,QuadratureRule,cubx,cubw)
+    integer(ip),intent(in)::                level
+    character(*),intent(in)::               QuadratureRule
+    real(rp),dimension(:),intent(out)::     cubw
+    real(rp),dimension(:,:),intent(out)::   cubx
+    integer(ip)::                           dimSparseGrid,npSparseGrid
+    character(len(QuadratureRule))::        rule
+
+        dimSparseGrid = size(cubx,dim=1)
+        npSparseGrid= size(cubx,dim=2)
+        rule = QuadratureRule
+        call lowerstring(rule)
+        
+        if(rule == 'cc' .or. rule == 'clenshawcurtis') then
+            call cc(dimSparseGrid,level,npSparseGrid,cubx,cubw)
+        elseif(rule == 'gh' .or. rule == 'gausshermite' .or. &
+            rule == 'gl' .or. rule == 'gausslegendre') then
+            call disableprogram
+        else
+            call disableprogram
+        endif
+    
+    contains
+        !--
+        subroutine cc(dim,mlvl,npSg,x,w)
+        integer(ip),intent(in)::                dim,mlvl,npSg
+        real(rp),dimension(:,:),intent(out)::   x
+        real(rp),dimension(:),intent(out)::     w
+        integer(ip)::                           npMlvl,ipt,id,i
+        integer(ip),dimension(dim,npSg)::       gi,gb   !gi->gridindex:  gb->gridbase
+            
+            !gi map one-dimensional index to sparse multi-dimensional index with index coordinate like (0,0,...0)
+            !notice index from 0 to np-1
+            call levelIndex_cfn(dim,mlvl,npSg,gi,gb)
+            
+            npMlvl = NpAtLevelClose(mlvl)
+            
+            !calculate x
+            do ipt = 1,npSg
+                do id = 1,dim
+                    i = gi(id,ipt)+1
+                    if(npMlvl==1) then  ! one point only
+                        x(id,ipt) = 0._rp
+                    elseif(2*(npMlvl-i)==npMlvl-1) then !middle point
+                        x(id,ipt) = 0._rp
+                    else
+                        x(id,ipt) = cos ( real ( npMlvl - i, kind = rp ) * pi &
+                                    / real ( npMlvl - 1, kind = rp ) )
+                    endif
+                enddo
+            enddo
+            
+            !calculate w
+            call sparseGridWeight_cfn(dim,mlvl,npSg,gi,w)
+        
+        end subroutine cc
+        !--
+        subroutine levelIndex_cfn(dim,mlvl,npSg,gridIndex,gridBase)
+        integer(ip),intent(in)::                dim,mlvl,npSg
+        integer(ip),dimension(:,:),intent(out)::gridIndex,gridBase
+        integer(ip),dimension(dim)::            lvl_d,np_d
+        integer(ip),dimension(:,:),allocatable::giTensor
+        integer(ip),dimension(:),allocatable::  glvl
+        integer(ip)::                           i,j,ilvl,n,npTensor,h,t,npmlv,lv4id,s,lv
+        logical(lp)::                           more
+        
+            n = 0
+            do ilvl=0,mlvl
+            
+                more = .false.
+                h = 0; t = 0
+                
+                do; call compositionNext(ilvl,dim,lvl_d,more,h,t) !sum(lvl_d) = ilvl and do recycle
+                    np_d = NpAtLevelClose(lvl_d)
+                    npTensor = product(np_d)  !tensor point number under this lvl_d(1:dim)
+                    allocate(giTensor(dim,npTensor),glvl(npTensor))
+                    
+                    !--multigrid_index
+                    !giTensor map one-dimensional index to tensor multi-dimensional index with index coordinate like (0,0,...0)
+                    call multiGridIndex_cfn(dim,np_d,giTensor)
+                    
+                    !--scale to reflect the level according to multiply index a power of 2
+                    call multiGridScaleClose(dim,mlvl,lvl_d,giTensor)
+
+                    !--Determine the first level of appearance of each of the points.
+                    call abscissaLevelClose(dim,mlvl,gitensor,glvl)
+                    
+                    do j=1,npTensor
+                        if(glvl(j) == ilvl) then
+                            n = n + 1
+                            gridBase(:,n) = np_d
+                            gridIndex(:,n) = giTensor(:,j)
+                        endif
+                    enddo
+                    
+                    deallocate(giTensor,glvl)
+                    if(.not.more) exit
+                enddo
+            enddo
+        end subroutine levelIndex_cfn
+        !--
+        subroutine multiGridIndex_cfn(dim,np_d,giTensor)
+        integer(ip),intent(in)::                dim
+        integer(ip),dimension(:),intent(in)::   np_d        !np in each dimension
+        integer(ip),dimension(:,:),intent(out)::giTensor
+        integer(ip)::                           i
+        logical(lp)::                           more
+        integer(ip),dimension(dim)::            a
+            more = .false.
+            do i=1,size(giTensor,dim=2) ! = product(np_d) = npTensor
+                !cycle to (0,0,...0) -> (np_d(1)-1,np_d(2)-1,...,np_d(d)-1) | total npTensor
+                call colexNext(dim,np_d,a,more)
+                giTensor(:,i) = a
+            enddo
+        end subroutine MultiGridIndex_cfn
+        !--
+        subroutine multiGridScaleClose(dim,mlvl,lvl_d,gi)
+        integer(ip),intent(in)::                    dim,mlvl
+        integer(ip),dimension(:),intent(in)::       lvl_d
+        integer(ip),dimension(:,:),intent(inout)::  gi
+        integer(ip)::                               i
+            do i=1,dim
+                if(lvl_d(i)==0) then
+                    gi(i,:) = ishft(NpAtLevelClose(mlvl)-1,-1)
+                else
+                    gi(i,:) = gi(i,:) * 2**(mlvl-lvl_d(i))
+                endif
+            enddo
+        end subroutine multiGridScaleClose
+        !--
+        subroutine abscissaLevelClose(dim,mlvl,giTensor,glvl)
+        integer(ip),intent(in)::                dim,mlvl
+        integer(ip),dimension(:,:),intent(in):: giTensor
+        integer(ip),dimension(:),intent(out)::  glvl
+        integer(ip)::                           i,j,s,npMlvl,lvl
+            if(mlvl<=0) then
+                glvl = 0
+            else
+                npMlvl = NpAtLevelClose(mlvl)
+                do j=1,size(giTensor,dim=2)
+                    glvl(j) = 0
+                    do i=1,dim
+                        s = modulo(giTensor(i,j),npMlvl)
+                        if(s==0) then
+                            lvl = 0
+                        else
+                            lvl = mlvl
+                            do while(ibits(s,0,1)==0)
+                                s = ishft(s,-1)
+                                lvl = lvl - 1
+                            enddo
+                        endif
+                        if(lvl==0) then
+                            lvl = 1
+                        elseif(lvl==1) then
+                            lvl = 0
+                        endif
+                        glvl(j) = glvl(j) + lvl
+                    enddo
+                enddo
+            endif
+        end subroutine abscissaLevelClose
+        !--
+        subroutine sparseGridWeight_cfn(dim,mlvl,npSg,gi,w)
+        integer(ip),intent(in)::                dim,mlvl,npSg
+        integer(ip),dimension(:,:),intent(in):: gi
+        real(rp),dimension(:),intent(out)::     w
+        integer(ip)::                           ilvl,h,t,npTensor,i,j
+        real(rp)::                              coef
+        logical(lp)::                           more
+        integer(ip),dimension(dim)::            np_d,lvl_d
+        integer(ip),dimension(:,:),allocatable::giTensor
+        real(rp),dimension(:),allocatable::     gw
+            
+            if(mlvl==0) then
+                w = 2._rp ** dim
+                return
+            endif
+            
+            w = 0._rp
+            do ilvl=max(0,mlvl+1-dim),mlvl
+            
+                more = .false.; h=0; t=0
+                
+                do; call compositionNext(ilvl,dim,lvl_d,more,h,t) !sum(lvl_d) = ilvl and do recycle
+                    np_d = NpAtLevelClose(lvl_d)
+                    npTensor = product(np_d)  !tensor point number under this lvl_d(1:dim)
+                    allocate(giTensor(dim,npTensor),gw(npTensor))
+                    
+                    !--multigrid_index
+                    !giTensor map one-dimensional index to tensor multi-dimensional index with index coordinate like (0,0,...0)
+                    call multiGridIndex_cfn(dim,np_d,giTensor)
+                    
+                    !--
+                    call TensorWeight(dim,np_d,'cc',gw)
+                    
+                    !--scale to reflect the level according to multiply index a power of 2
+                    call multiGridScaleClose(dim,mlvl,lvl_d,giTensor)
+                    
+                    !--
+                    coef = merge(1._rp,-1._rp,ibits(mlvl-ilvl,0,1)==0) * binomialCoef(dim-1,mlvl-ilvl)
+                    do j=1,npTensor
+                        do i=1,npSg
+                            if(all(giTensor(:,j)==gi(:,i))) w(i) = w(i) + coef*gw(j)
+                        enddo
+                    enddo
+                    
+                    deallocate(giTensor,gw)
+                    if(.not.more) exit
+                enddo
+            enddo
+        
+        end subroutine sparseGridWeight_cfn
+        
+    end subroutine sparseGrid
+ 
+    !----------------------------------------------------------------------
+    !    Sparse grids can naturally be nested.  A natural scheme is to use
+    !    a series of one-dimensional rules arranged in a series of "levels"
+    !    whose np roughly doubles with each step.
+    !
+    !    The arrangement described here works naturally for the Fejer Type 1,
+    !    Fejer Type 2, and Gauss Patterson rules.  It also can be used, partially,
+    !    to describe the growth of Gauss Legendre rules.
+    !
+    !    The idea is that we start with LEVEL = 0, np = 1 indicating the single
+    !    point at the center, and for all values afterwards, we use the
+    !    relationship
+    !
+    !      np = 2^(LEVEL+1) - 1.
+    !
+    !    The following table shows how the growth will occur:
+    !
+    !    Level    np
+    !
+    !    0          1
+    !    1          3 =  4 - 1
+    !    2          7 =  8 - 1
+    !    3         15 = 16 - 1
+    !    4         31 = 32 - 1
+    !    5         63 = 64 - 1
+    !
+    !    For the Fejer Type 1, Fejer Type 2, and Gauss Patterson rules, the point
+    !    growth is nested.  If we have np points on a particular LEVEL, the next
+    !    level includes all these old points, plus np+1 new points, formed in the
+    !    gaps between successive pairs of old points plus an extra point at each
+    !    end.
+    !
+    !    Level    np = New + Old
+    !
+    !    0          1   =  1  +  0
+    !    1          3   =  2  +  1
+    !    2          7   =  4  +  3
+    !    3         15   =  8  +  7
+    !    4         31   = 16  + 15
+    !    5         63   = 32  + 31
+    !
+    !    If we use a series of Gauss Legendre rules, then there is almost no
+    !    nesting, except that the central point is shared.  If we insist on
+    !    producing a comparable series of such points, then the "nesting" behavior
+    !    is as follows:
+    !
+    !    Level    np = New + Old
+    !
+    !    0          1   =  1  +  0
+    !    1          3   =  2  +  1
+    !    2          7   =  6  +  1
+    !    3         15   = 14  +  1
+    !    4         31   = 30  +  1
+    !    5         63   = 62  +  1
+    !
+    !    Moreover, if we consider ALL the points used in such a set of "nested"
+    !    Gauss Legendre rules, then we must sum the "NEW" column, and we see that
+    !    we get roughly twice as many points as for the truly nested rules.
+    !
+    !    In this routine, we assume that a vector of levels is given,
+    !    and the corresponding nps are desired.
+    elemental integer(ip) function NpAtLevelOpen(level) result(np)
+    integer(ip),intent(in)::    level
+        np = 2**(level + 1) - 1
+    end function NpAtLevelOpen
+    
+    !--
+    elemental integer(ip) function NpAtLevelClose(level) result(np)
+    integer(ip),intent(in)::    level
+        np = merge(1 , 2**level + 1 , level==0)
+    end function NpAtLevelClose
+    !--
+    subroutine TensorWeight(dim,np_d,QuadratureRule,gw)
+    integer(ip),intent(in)::                dim
+    integer(ip),dimension(:),intent(in)::   np_d
+    character(*),intent(in)::               QuadratureRule
+    real(rp),dimension(:),intent(out)::     gw
+    real(rp),dimension(:),allocatable::     x,w
+    integer(ip)::                           id
+    character(len(QuadratureRule))::        rule
+    integer(ip)::                           contig,skip,rep,start,j,k
+        
+        rule = quadratureRule
+        call lowerstring(rule)
+        
+        gw = 1._rp
+        contig = 1; skip = 1; rep = size(gw)
+        do id = 1,dim
+            allocate(x(np_d(id)),w(np_d(id)))
+            if(rule=='cc'.or.rule=='clenshawcurtis') then
+                call ClenshawCurtis(x,w)
+            else
+                call disableprogram
+            endif
+            !prod(id,np_d(id),w,dim,npTensor,gw) | size(w) = np_id(id)
+            rep = rep / np_d(id)
+            skip = skip * np_d(id)
+            do j=1,np_d(id)
+                start = 1 + (j-1)*contig
+                do k=1,rep
+                    gw(start:start+contig-1) = gw(start:start+contig-1) * w(j)
+                    start = start + skip
+                enddo
+            enddo
+            contig = contig * np_d(id)
+            deallocate(x,w)
+        enddo
+        
+    end subroutine TensorWeight
     
 end module IntegrationLib

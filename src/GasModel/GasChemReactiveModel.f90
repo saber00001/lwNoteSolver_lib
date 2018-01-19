@@ -84,22 +84,21 @@ implicit none
 contains
 !-------------------------------------------------------------------------
     !-------------
-    pure subroutine init_n(this,ncoef,mw)
+    pure subroutine init_n(this,ncoef)
     class(GasSpeciesModel),intent(out)::    this
     integer(ip),intent(in)::                ncoef
-    real(rp),intent(in)::                   mw
-    
         allocate(this%CH(ncoef),this%CL(ncoef))
         this%CH = 0._rp; this%CL = 0._rp
-        this%mw_ = mw
-    
+        this%mw_ = 0._rp
     end subroutine init_n
     !--
-    pure subroutine init_coefs(this,Coef_H,Coef_L)
+    pure subroutine init_coefs(this,Coef_H,Coef_L,mw)
     class(GasSpeciesModel),intent(out)::    this
     real(rp),dimension(:),intent(in)::      Coef_H,Coef_L
+    real(rp),intent(in)::                   mw
         allocate(this%CH,source = Coef_H)
         allocate(this%CL,source = Coef_L)
+        this%mw_ = mw
     end subroutine init_coefs
     
     !--------------------!
@@ -136,12 +135,12 @@ contains
     real(rp),parameter::                temperature_boundary = 1000._rp
     
         if(t > temperature_boundary) then
-            shcp = R*(this%thermoFitCoefH(1)*T**(-2) + this%thermoFitCoefH(2)*T**(-1) + this%thermoFitCoefH(3)&
-                  + this%thermoFitCoefH(4)*t + this%thermoFitCoefH(5)*T**2&
+            shcp = R*(this%thermoFitCoefH(1)*T**(-2) + this%thermoFitCoefH(2)*T**(-1) + this%thermoFitCoefH(3) &
+                  + this%thermoFitCoefH(4)*T + this%thermoFitCoefH(5)*T**2&
                   + this%thermoFitCoefH(6)*T**3 + this%thermoFitCoefH(7)*T**4)
         else
-            shcp = R*(this%thermoFitCoefL(1)*T**(-2) + this%thermoFitCoefL(2)*T**(-1)&
-                  + this%thermoFitCoefL(3) + this%thermoFitCoefL(4)*t + this%thermoFitCoefL(5)*T**2&
+            shcp = R*(this%thermoFitCoefL(1)*T**(-2) + this%thermoFitCoefL(2)*T**(-1) + this%thermoFitCoefL(3) &
+                  + this%thermoFitCoefL(4)*T + this%thermoFitCoefL(5)*T**2 &
                   + this%thermoFitCoefL(6)*T**3 + this%thermoFitCoefL(7)*T**4)
         end if
     
@@ -192,7 +191,6 @@ contains
     type(GasSpeciesModel),dimension(:),intent(in):: sp
         allocate(this%species,source=sp)
     end subroutine init_sp
-    
     
     
     !this is a corrected version, details refer to wiki Arrhenius method
@@ -286,7 +284,7 @@ contains
         
         !newton iterative method| [f] is energy conservative function, and [fp] is the derived function
         counter=0; T = T0; Tt = 0._rp
-        do while(counter<=15.or.abs(T-Tt) > GlobalEps * 1000._rp)
+        do while(counter<=15.and.abs(T-Tt) > GlobalEps * 1000._rp)
             counter = counter + 1
             Tt = T
             Cpi = Sp%Cp(Tt,Ri)

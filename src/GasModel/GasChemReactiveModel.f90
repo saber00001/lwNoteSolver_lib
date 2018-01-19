@@ -238,18 +238,20 @@ contains
     end function reverseRateConstant_equilibrium
     
     !stochiometric = stochiometricb - stochiometricf | (nr,ns)
-    pure function EquilibriumConstant(stoichiometric,entropy,enthalpy,R,T) result(ec)
+    !the parameters at interface are all based on SI Unit
+    pure function EquilibriumConstant(stoichiometric,entropy,enthalpy,T) result(ec)
     real(rp),dimension(:),intent(in)::                      entropy,enthalpy
     real(rp),dimension(:,:),intent(in)::                    stoichiometric
-    real(rp),intent(in)::                                   R,T
+    real(rp),intent(in)::                                   T
     real(rp),dimension(size(stoichiometric,dim=1))::        ec
     integer(ip)::                                           ri
-    real(rp),parameter::                                    Patm=P_atm * 1.e-6_rp !pa -> 1 dynes/cm^2 = 10-6 bar
+    real(rp),parameter::                                    Teq = P_atm / R_c * 1.e-6_rp
+    !pressure should be scaled from pa -> dynes/cm2 | p_dynes = p_atm * 10
+    !universe gas constant should be scaled from J/(mol K) -> ergs/(mol K) | R_ergs = R_c * 10^7
+    !then Patm / R should be scalsed like p_dynes/R_ergs = P_atm / R_c * 10^(-6) | this is expression in Chemkin
         do ri = 1,size(ec)
-            !equilibrium constant constant
-            ec(ri) = exp(sum(stoichiometric(ri,:)*entropy/R) - sum(stoichiometric(ri,:)*enthalpy/R/T))
-            !equilibrium constant
-            ec(ri) = ec(ri) * (Patm / R/T)**(sum(stoichiometric(ri,:)))
+            ec(ri) = exp(sum(stoichiometric(ri,:)*entropy/R_c) - sum(stoichiometric(ri,:)*enthalpy/R_c/T)) !Kpi
+            ec(ri) = ec(ri) * (Teq/T)**(sum(stoichiometric(ri,:))) !Kci
         enddo
     end function EquilibriumConstant
     

@@ -1,23 +1,60 @@
-!physical model branches into an extreme scale with various corrections.
-!create an nested object to organize these models is a smarter way to refactor
-!use the instatiated object always
 module GasChemReactionModel_
 use constants
 use GasPerfectThermoModel_
 implicit none
 
-    !private::IdealGasComponentThermo
-    !instantiation
-    !public:: IdealGasComponentThermo
     private          
     public:: GasChemReactionModel
-    !public:: GasComponentModel
+    public:: GasSpeciesModel
     !--
+    
+    
+    !----------------------------------------------------------------
+    type GasSpeciesModel
+        
+        private
+        real(rp),allocatable,dimension(:)::     CH
+        real(rp),allocatable,dimension(:)::     CL
+        real(rp)::                              mw_ ![g/mol]
+            
+    contains  
+          
+        generic::                   init    =>  init_n,     &
+                                                init_coefs
+        procedure::                 init_n
+        procedure::                 init_coefs
+
+        !menber function
+        procedure::                 thermoFitCoefH
+        procedure::                 thermoFitCoefL
+        procedure::                 mw => molecularWeight
+        procedure::                 MolecularWeight ![g/mol]
+        procedure::                 R               ![J][K-1][g-1]
+        
+        procedure::                 Cp => CpFit
+        procedure::                 CpFit
+        
+        procedure::                 H => EnthalpyFit
+        procedure::                 EnthalpyFit
+        
+        procedure::                 S => EntropyFit
+        procedure::                 EntropyFit
+        
+    end type GasSpeciesModel
+    
+    !------------------------------!
     type GasChemReactionModel
+        
+        private
+        type(GasSpeciesModel),allocatable,dimension(:)::  species
     
     contains
+    
+        generic::                   init => init_sp
+        procedure::                 init_sp
         
         !chemistry production of basic model, see chemKin of Ansys
+        generic::                   omega => ProductionRate_Basic
         generic::                   ProductionRate => ProductionRate_Basic
         procedure,nopass::          ProductionRate_Basic
         
@@ -26,6 +63,7 @@ implicit none
         
         
         !calculate rate constant => k = a T^b \exp{- \frac{Ea}{R T}}
+        generic::                   k => Arrhenius
         generic::                   RateConstant => Arrhenius
         procedure,nopass::          Arrhenius
         
@@ -37,70 +75,126 @@ implicit none
         !calculate Equilibrium Constant based on experience formula
         procedure,nopass::          EquilibriumConstant
         
-        !procedure,nopass::          Temperature
         procedure,nopass::          ThreeBodyConcentration
         
         procedure,nopass::          Temperature
         
     end type GasChemReactionModel
-    !----------------------------------------------------------------
-    type GasComponentModel
-        
-        private
-            real(rp),allocatable,dimension(:)::     Coef_High_T_Range
-            real(rp),allocatable,dimension(:)::     Coef_Low_T_Range
-    contains  
-          
-        generic::                   init    =>      init_n,     &
-                                                    init_n_val, &
-                                                    init_vals    
-        
-        procedure::                                 init_n
-        procedure::                                 init_n_val
-        procedure::                                 init_vals
-    !
-    end type GasComponentModel
-    
-    !type(GasPerfectThermoModel)::IdealGasComponentThermo
         
 contains
 !-------------------------------------------------------------------------
     !-------------
-    pure subroutine init_n(this,ncoef)
-    class(GasComponentModel),intent(out)::      this
-    integer(ip),intent(in)::                    ncoef
+    pure subroutine init_n(this,ncoef,mw)
+    class(GasSpeciesModel),intent(out)::    this
+    integer(ip),intent(in)::                ncoef
+    real(rp),intent(in)::                   mw
     
-        allocate(this%Coef_High_T_Range(ncoef))
-        allocate(this%Coef_Low_T_Range(ncoef))
-        this%Coef_High_T_Range          = 0._rp
-        this%Coef_Low_T_Range           = 0._rp
+        allocate(this%CH(ncoef),this%CL(ncoef))
+        this%CH = 0._rp; this%CL = 0._rp
+        this%mw_ = mw
     
     end subroutine init_n
     !--
-    pure subroutine init_n_val(this,ncoef,Coef_H,Coef_L)
-    class(GasComponentModel),intent(out)::      this
-    integer(ip),intent(in)::                    ncoef
-    real(rp),intent(in)::                       Coef_H,Coef_L
+    pure subroutine init_coefs(this,Coef_H,Coef_L)
+    class(GasSpeciesModel),intent(out)::    this
+    real(rp),dimension(:),intent(in)::      Coef_H,Coef_L
+        allocate(this%CH,source = Coef_H)
+        allocate(this%CL,source = Coef_L)
+    end subroutine init_coefs
     
-        allocate(this%Coef_High_T_Range(ncoef))
-        allocate(this%Coef_Low_T_Range(ncoef))
-        this%Coef_High_T_Range          = Coef_H
-        this%Coef_Low_T_Range           = Coef_L
+    !--------------------!
+    elemental real(rp) function thermoFitCoefH(this,i)
+    class(GasSpeciesModel),intent(in)::     this
+    integer(ip),intent(in)::                i
+        thermoFitCoefH = this%CH(i)
+    end function thermoFitCoefH
     
-    end subroutine init_n_val
-    !--
-    pure subroutine init_vals(this,Coef_H,Coef_L)
-    class(GasComponentModel),intent(out):: this
-    real(rp),dimension(:),intent(in)::  Coef_H,Coef_L
+    !--------------------!
+    elemental real(rp) function thermoFitCoefL(this,i)
+    class(GasSpeciesModel),intent(in)::     this
+    integer(ip),intent(in)::                i
+        thermoFitCoefL = this%CL(i)
+    end function thermoFitCoefL
+    
+    !--------------------
+    elemental real(rp) function molecularWeight(this)
+    class(GasSpeciesModel),intent(in)::     this
+        MolecularWeight = this%mw_
+    end function molecularWeight
+    
+    !--------------------
+    elemental real(rp) function R(this)
+    class(GasSpeciesModel),intent(in)::     this
+        R = R_c / this%mw_
+    end function R
+    
+!------------------------------------------------------------------------
+    !specific heat capacity polynomial fitting
+    elemental real(rp) function CpFit(this,T,R) result(shcp)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T,R
+    real(rp),parameter::                temperature_boundary = 1000._rp
+    
+        if(t > temperature_boundary) then
+            shcp = R*(this%thermoFitCoefH(1)*T**(-2) + this%thermoFitCoefH(2)*T**(-1) + this%thermoFitCoefH(3)&
+                  + this%thermoFitCoefH(4)*t + this%thermoFitCoefH(5)*T**2&
+                  + this%thermoFitCoefH(6)*T**3 + this%thermoFitCoefH(7)*T**4)
+        else
+            shcp = R*(this%thermoFitCoefL(1)*T**(-2) + this%thermoFitCoefL(2)*T**(-1)&
+                  + this%thermoFitCoefL(3) + this%thermoFitCoefL(4)*t + this%thermoFitCoefL(5)*T**2&
+                  + this%thermoFitCoefL(6)*T**3 + this%thermoFitCoefL(7)*T**4)
+        end if
+    
+    end function CpFit
+!------------------------------------------------------------------------
+    !Specific heat enthalpy polynomial fitting
+    elemental real(rp) function EnthalpyFit(this,T,R) result(enthalpy)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T,R
+    real(rp),parameter::                temperature_boundary = 1000._rp
         
-        allocate(this%Coef_High_T_Range,source=Coef_H)
-        allocate(this%Coef_Low_T_Range,source =Coef_L)
+        if(t > temperature_boundary) then
+            enthalpy= R*(-this%thermoFitCoefH(1)*T**(-1) + this%thermoFitCoefH(2)*log(T)&
+                    + this%thermoFitCoefH(3)*t + this%thermoFitCoefH(4)*T**2/2._rp + this%thermoFitCoefH(5)*T**3/3._rp&
+                    + this%thermoFitCoefH(6)*T**4/4._rp + this%thermoFitCoefH(7)*T**5/5._rp + this%thermoFitCoefH(8))
+        else
+            enthalpy= R*(-this%thermoFitCoefL(1)*T**(-1) + this%thermoFitCoefL(2)*log(T) + this%thermoFitCoefL(3)*t&
+                    + this%thermoFitCoefL(4)*T**2/2._rp + this%thermoFitCoefL(5)*T**3/3._rp&
+                    + this%thermoFitCoefL(6)*T**4/4._rp + this%thermoFitCoefL(7)*T**5/5._rp + this%thermoFitCoefL(8))
+        end if
         
-    end subroutine init_vals
+    end function EnthalpyFit
+!------------------------------------------------------------------------
+    !specific entropy polynomial fitting
+    elemental real(rp) function EntropyFit(this,T,R) result(entropy)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T,R
+    real(rp),parameter::                temperature_boundary = 1000._rp
+        
+        if(t > temperature_boundary) then
+            entropy = R*(-this%thermoFitCoefH(1)*T**(-2)/2._rp - this%thermoFitCoefH(2)*T**(-1)&
+                    + this%thermoFitCoefH(3)*log(T) + this%thermoFitCoefH(4)*t + this%thermoFitCoefH(5)*T**2/2._rp&
+                    + this%thermoFitCoefH(6)*T**3/3._rp + this%thermoFitCoefH(7)*T**4/4._rp + this%thermoFitCoefH(9))
+        else
+            entropy = R*(-this%thermoFitCoefL(1)*T**(-2)/2._rp - this%thermoFitCoefL(2)*T**(-1)&
+                    + this%thermoFitCoefL(3)*log(T) + this%thermoFitCoefL(4)*t + this%thermoFitCoefL(5)*T**2/2._rp&
+                    + this%thermoFitCoefL(6)*T**3/3._rp + this%thermoFitCoefL(7)*T**4/4._rp + this%thermoFitCoefL(9))
+        end if
+        
+    end function EntropyFit
+!------------------------------------------------------------------------  
     
-    !---------------
+    
     
 !-------------------------------------------------------------------------
+    pure subroutine init_sp(this,sp)
+    class(GasChemReactionModel),intent(out)::       this
+    type(GasSpeciesModel),dimension(:),intent(in):: sp
+        allocate(this%species,source=sp)
+    end subroutine init_sp
+    
+    
+    
     !this is a corrected version, details refer to wiki Arrhenius method
     elemental real(rp) function Arrhenius(a,b,Ea,R,T) result(k)
     real(rp),intent(in)::                                   a,b,Ea,R,T
@@ -109,8 +203,7 @@ contains
     
     !production rate of concentraction[mol], Species concentraction[mol] = rho_i / MolecularWeight
     pure function ProductionRate_Basic(Species,stoichiometricF,stoichiometricB,&
-                                                            RateConstantF,RateConstantR,&
-                                                            ThreeBodyConcentration) result(pr)
+                                        RateConstantF,RateConstantR,ThreeBodyConcentration) result(pr)
     real(rp),dimension(:),intent(in)::                      Species,RateConstantF,RateConstantR,ThreeBodyConcentration
     real(rp),dimension(:,:),intent(in)::                    stoichiometricF,stoichiometricB
     real(rp),dimension(size(Species))::                     pr
@@ -176,46 +269,33 @@ contains
           
     end function ThreeBodyConcentration
     
-    !caculate gas temperature
-    pure subroutine Temperature(t0,ee,ri,yi,Total_Coef_High_T_range,Total_Coef_Low_T_range,temp)
-    real(rp),intent(in)::                                           t0,ee
-    real(rp),dimension(:),intent(in)::                              ri,yi
-    real(rp),dimension(:,:),intent(in)::                            Total_Coef_High_T_range,Total_Coef_Low_T_range
-    real(rp),intent(out)::                                          temp
-    integer(ip)::                                                   count,sp,i,j,ns
-    real(rp)::                                                      t1,t2,fff,ff
-    real(rp),dimension(:),allocatable::                             cpi,hi
-    type(GasComponentModel),dimension(:),allocatable::              GasComponent
-    type(GasPerfectThermoModel)::                                   GasPerfectThermo
-
-        ns =size(ri)
-        allocate(cpi(ns),hi(ns))
-        allocate(GasComponent(ns)) 
-        do i=1,ns
-            call GasComponent(i)%init(Total_Coef_High_T_range(i,:),Total_Coef_Low_T_range(i,:))
+    !caculate gas temperature |general Unit of Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
+    pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
+    real(rp),intent(in)::                                   T0,energy ! |energy = Cv*T
+    real(rp),dimension(:),intent(in)::                      Yi
+    type(GasSpeciesModel),dimension(:),intent(in)::         Sp
+    integer(ip)::                                           counter
+    real(rp)::                                              Tt,f,fp,energyScaledUI
+    real(rp),dimension(size(Sp))::                          cpi,hi,Ri
+    
+        !scale J/kg -> J/g
+        energyScaledUI = energy * 1.e-3_rp
+        Ri = Sp%R()
+        
+        !newton iterative method| [f] is energy conservative function, and [fp] is the derived function
+        counter=0; T = T0; Tt = 0._rp
+        do while(counter<=15.or.abs(T-Tt) > GlobalEps * 1000._rp)
+            counter = counter + 1
+            Tt = T
+            Cpi = Sp%Cp(Tt,Ri)
+            Hi  = Sp%H(Tt,Ri)
+            
+            f  = sum(Yi*Hi) - sum(Yi*Ri)*Tt - energyScaledUI
+            fp = sum(Yi*Cpi) - sum(Yi*Ri)
+            T = Tt - f/fp
         end do
-        count=0
-        do count=0,10
-            t1=t0
-            t2=t1
-            do while((t2==t1))
-                do sp=1,ns
-                    call GasPerfectThermo%init(GasComponent(sp)%Coef_High_T_range,GasComponent(sp)%Coef_Low_T_range)
-                    cpi(sp) =   GasPerfectThermo%Cp(GasPerfectThermo,t1,ri(sp))
-                    hi(sp)  =   GasPerfectThermo%H(GasPerfectThermo,t1,ri(sp))  
-                end do
-                fff=(sum(yi(:)*hi(:))-ee*1.e-3_rp)-sum(yi(:)*ri(:))*t1
-                ff=(sum(yi(:)*cpi(:)))-sum((yi(:))*ri(:))
-                t2=t1-fff/ff
-                if(dabs(t2-t1).gt.1.e-6_rp) then
-                    t1=t2
-                else
-                    exit
-                end if
-            end do
-        end do
-        temp=t2
-    end subroutine Temperature
+        
+    end function Temperature
     
     
 end module GasChemReactionModel_

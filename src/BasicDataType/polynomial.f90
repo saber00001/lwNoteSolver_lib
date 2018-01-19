@@ -18,14 +18,16 @@ implicit none
     public:: LegendrePolynomialSet
     public:: normalLegendrePolynomial
     public:: normalLegendrePolynomialSet
+    !--Hermite, use recursive method rather than explict expression
+    public:: HermitePolynomial
+    public:: HermitePolynomialSet
+    public:: normalHermitePolynomial
+    public:: normalHermitePolynomialSet
     !--chebyshev
     public:: ChebyshevPolynomialT
     public:: ChebyshevPolynomialTset
     public:: ChebyshevPolynomialT_Clenshaw
     !--
-    
-    
-    !-----------------------------------------
     type:: polynomial
     
         private
@@ -81,9 +83,23 @@ implicit none
     interface integrate
         procedure:: integratePolynomial
     end interface integrate   
-    
-    
-    
+    !---------------------------
+    interface HermitePolynomial
+        procedure:: HermitePhysicistsPolynomial
+    end interface HermitePolynomial
+    !---------------------------
+    interface HermitePolynomialSet
+        procedure:: HermitePhysicistsPolynomialSet
+    end interface HermitePolynomialSet
+    !---------------------------
+    interface normalHermitePolynomial
+        procedure:: normalHermitePhysicistsPolynomial
+    end interface normalHermitePolynomial
+    !---------------------------
+    interface normalHermitePolynomialSet
+        procedure:: normalHermitePhysicistsPolynomialSet
+    end interface normalHermitePolynomialSet
+    !---------------------------
 contains
 
 
@@ -514,5 +530,127 @@ contains
         endif
         s = c(0) + x * bk1 - bk2
     end function ChebyshevPolynomialT_Clenshaw
+    
+    
+    !---------------------
+    !H_n = 2x H_{n-1} - 2(n-1) H_{n-2}
+    elemental type(polynomial) function HermitePhysicistsPolynomial(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial)::                  tm2,tm1,x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly = [1._rp]
+        elseif(n==1) then
+            poly = [0._rp,2._rp]
+        else
+            x   = [0._rp,1._rp]
+            tm2 = [1._rp]
+            tm1 = 2._rp*x
+            do i = 2 , n
+                poly = 2._rp* x * tm1 - 2._rp*(i - 1._rp) * tm2
+                tm2 = tm1
+                tm1 = poly
+            enddo
+        endif
+    end function HermitePhysicistsPolynomial
+    
+    !--
+    pure function HermitePhysicistsPolynomialSet(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial),dimension(0:n)::   poly
+    type(polynomial)::                  x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly(0) = [1._rp]
+        elseif(n==1) then
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,2._rp]
+        else
+            x   = [0._rp,1._rp]
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,2._rp]
+            do i = 2 , n
+                poly(i) = 2._rp* x * poly(i-1) - 2._rp*(i - 1._rp) * poly(i-2)
+            enddo
+        endif
+    end function HermitePhysicistsPolynomialSet
+    
+    !--
+    elemental type(polynomial) function normalHermitePhysicistsPolynomial(n) result(poly)
+    integer(ip),intent(in)::                n
+        poly = ( 1._rp / sqrt( spi * 2**n * factorial(n)) ) * HermitePhysicistsPolynomial(n)
+    end function normalHermitePhysicistsPolynomial
+    
+    !--
+    pure function normalHermitePhysicistsPolynomialSet(n) result(poly)
+    integer(ip),intent(in)::                n
+    type(polynomial),dimension(0:n)::       poly
+    integer(ip)::                           i
+        poly = HermitePhysicistsPolynomialSet(n)
+        do i=0,n
+            poly(i) = ( 1._rp / sqrt( spi * 2**n * factorial(n)) ) * poly(i)
+        enddo
+    end function normalHermitePhysicistsPolynomialSet
+    
+     !---------------------
+    !H_n = x H_{n-1} - (n-1) H_{n-2}
+    elemental type(polynomial) function HermiteProbabilistsPolynomial(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial)::                  tm2,tm1,x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly = [1._rp]
+        elseif(n==1) then
+            poly = [0._rp,1._rp]
+        else
+            x   = [0._rp,1._rp]
+            tm2 = [1._rp]
+            tm1 = x
+            do i = 2 , n
+                poly = x * tm1 - (i - 1._rp) * tm2
+                tm2 = tm1
+                tm1 = poly
+            enddo
+        endif
+    end function HermiteProbabilistsPolynomial
+    
+    !--
+    pure function HermiteProbabilistsPolynomialSet(n) result(poly)
+    integer(ip),intent(in)::            n
+    type(polynomial),dimension(0:n)::   poly
+    type(polynomial)::                  x
+    integer(ip)::                       i
+        if(n<=0) then
+            poly(0) = [1._rp]
+        elseif(n==1) then
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+        else
+            x   = [0._rp,1._rp]
+            poly(0) = [1._rp]
+            poly(1) = [0._rp,1._rp]
+            do i = 2 , n
+                poly(i) = x * poly(i-1) - (i - 1._rp) * poly(i-2)
+            enddo
+        endif
+    end function HermiteProbabilistsPolynomialSet
+    
+    !--
+    elemental type(polynomial) function normalHermiteProbabilistsPolynomial(n) result(poly)
+    integer(ip),intent(in)::                n
+        poly = ( 1._rp / sqrt( sqrt(2._rp) * spi * factorial(n)) ) * HermiteProbabilistsPolynomial(n)
+    end function normalHermiteProbabilistsPolynomial
+    
+    !--
+    pure function normalHermiteProbabilistsPolynomialSet(n) result(poly)
+    integer(ip),intent(in)::                n
+    type(polynomial),dimension(0:n)::       poly
+    integer(ip)::                           i
+        poly = HermiteProbabilistsPolynomialSet(n)
+        do i=0,n
+            poly(i) = ( 1._rp / sqrt( sqrt(2._rp) * spi * factorial(n)) ) * poly(i)
+        enddo
+    end function normalHermiteProbabilistsPolynomialSet
+    
     
 end module polynomial_

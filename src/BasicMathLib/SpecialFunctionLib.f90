@@ -52,10 +52,23 @@ contains
     
 !--------------------------------------------------
     !refer to wiki <binomial coe>
-    !----------------------
-    pure integer(ip) function BinomialCoef_int(n,k) result(coef)
+    !----------------------avoid overflow and roundoff of integer
+    !coef = factorial(n-k+1,n) / factorial(k)
+    pure real(rp) function BinomialCoef_int(n,k) result(coef)
     integer(ip),intent(in)::    n,k
-        coef = factorial(n-k+1,n) / factorial(k)
+    integer(ip)::               mn,mx,i
+        mn = min(k,n-k)
+        if(mn<0) then
+            coef = 0._rp
+        elseif(mn==0) then
+            coef = 1._rp
+        else
+            mx = max(k,n-k)
+            coef = real(mx+1,kind=rp)
+            do i=2,mn
+                coef = coef * real(mx+i,kind=rp) / real(i,kind=rp)
+            enddo
+        endif
     end function BinomialCoef_int
     !----------------------
     pure real(rp) function BinomialCoef_general(a,k) result(coef)

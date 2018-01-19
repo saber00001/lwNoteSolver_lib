@@ -64,6 +64,16 @@ implicit none
         procedure:: anyiseq
     end interface
     
+    
+    !------
+    interface swap
+        procedure:: swapInt
+        procedure:: swapReal
+        procedure:: swapChar
+        procedure:: swapLogi
+    end interface
+    
+    
     !here we offer two methods for disabling program [disableProgram]&[disableNumber]
     !and correspondingly offer a inquire function to check 
     !if the number has beed disabled[disableNumber]
@@ -163,5 +173,30 @@ contains
     integer(idp),intent(in)::   i
         l = i == minidp
     end function disableStat_idp
+    
+    !-----------
+    elemental subroutine swapInt(a,b)
+    integer(ip),intent(inout):: a,b
+    integer(ip)::               t
+        t = a; a = b; b = t
+    end subroutine swapInt
+    
+    elemental subroutine swapReal(a,b)
+    real(rp),intent(inout)::    a,b
+    real(rp)::                  t
+        t = a; a = b; b = t
+    end subroutine swapReal
+    
+    elemental subroutine swapChar(a,b)
+    character(*),intent(inout)::        a,b
+    character(len=max(len(a),len(b))):: t
+        t = a; a = b; b = t
+    end subroutine swapChar
+    
+    elemental subroutine swapLogi(a,b)
+    logical(lp),intent(inout):: a,b
+    logical(lp)::               t
+        t = a; a = b; b = t
+    end subroutine swapLogi
     
 end module constants

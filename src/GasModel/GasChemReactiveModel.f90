@@ -61,7 +61,6 @@ implicit none
         !
         procedure,nopass::          ProgressRate
         
-        
         !calculate rate constant => k = a T^b \exp{- \frac{Ea}{R T}}
         generic::                   k => Arrhenius
         generic::                   RateConstant => Arrhenius
@@ -255,22 +254,23 @@ contains
     
     !Three body concentration = sum(molality * Three body coefficient)
     pure function ThreeBodyConcentration(MC,ThreeBodyCoefficient) result(tbc)
-    real(rp),dimension(:),intent(in)::                      MC
+    real(rp),dimension(:),intent(in)::                      MC ! [mol/cm^3] mole concentration
     real(rp),dimension(:,:),intent(in)::                    ThreeBodyCoefficient
     real(rp),dimension(size(ThreeBodyCoefficient,dim=1))::  tbc
     integer(ip)::                                           re,nr
         
         nr = size(ThreeBodyCoefficient,dim=1)
         do re =1,nr
-            tbc(re) = sum(ThreeBodyCoefficient(re,:) * MC(:))
+            tbc(re) = sum(ThreeBodyCoefficient(re,:) * MC)
             !not three body reaction
-            if(sum(ThreeBodyCoefficient(re,:))==0._rp) tbc(re)=1._rp
+            if(abs(sum(ThreeBodyCoefficient(re,:)))<Globaleps) tbc(re)=1._rp
         end do
           
     end function ThreeBodyConcentration
     
     !caculate gas temperature |general Unit of Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
-    pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
+    !pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
+    real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
     real(rp),intent(in)::                                   T0,energy ! |energy = Cv*T
     real(rp),dimension(:),intent(in)::                      Yi
     type(GasSpeciesModel),dimension(:),intent(in)::         Sp

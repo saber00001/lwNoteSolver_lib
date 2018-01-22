@@ -8,12 +8,12 @@ implicit none
     
     public::    sampleUniform
     public::    sampleAcceptRejection
-    public::    samplePullin              !Generation of normal variates with given sample mean and variance
-    
+    public::    samplePullin                                    ! Generation of normal variates with given sample mean and variance
+    public::    sampleGauss
     
     
 !--------------------------------------------------
-    interface sampleAcceptRejection                            ! the acceptance-rejection method
+    interface sampleAcceptRejection                             ! the acceptance-rejection method
         procedure:: sampleAR_discrete
         procedure:: sampleAR_continuous
     end interface 
@@ -155,5 +155,16 @@ contains
             u(2) = 2 * um - u(1)
         end if
     end function samplePullin
+    
+    !----------------------------------------
+    pure real(rp) function sampleGauss()
+    real(rp)::                  U1,U2
+    
+        U1 = sampleUniform()
+        U2 = sampleUniform()
+        sampleGauss = sqrt(-2._rp*log(U1))*COS(2._rp*pi*U2)
+    
+    end function sampleGauss
+    
     
 end module samplinglib

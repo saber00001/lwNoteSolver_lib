@@ -320,8 +320,7 @@ contains
     end function ThreeBodyConcentration
     
     !caculate gas temperature |general Unit of Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
-    !pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
-    real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
+    pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
     real(rp),intent(in)::                                   T0,energy ! |energy = Cv*T
     real(rp),dimension(:),intent(in)::                      Yi
     type(GasSpeciesModel),dimension(:),intent(in)::         Sp

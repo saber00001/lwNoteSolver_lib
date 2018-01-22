@@ -25,20 +25,33 @@ implicit none
         procedure::                 init_coefs
 
         !menber function
-        procedure::                 thermoFitCoefH
-        procedure::                 thermoFitCoefL
+        generic::                   thermoFitCoefH => thermoFitCoefH_i,thermoFitCoefH_ptr
+        procedure::                 thermoFitCoefH_i
+        procedure::                 thermoFitCoefH_ptr
+        
+        generic::                   thermoFitCoefL => thermoFitCoefL_i,thermoFitCoefL_ptr
+        procedure::                 thermoFitCoefL_i
+        procedure::                 thermoFitCoefL_ptr
+        
         procedure::                 mw => molecularWeight
+        
         procedure::                 MolecularWeight ![g/mol]
-        procedure::                 R               ![J][K-1][g-1]
         
-        procedure::                 Cp => CpFit
-        procedure::                 CpFit
+        procedure::                 R               ![J/(K*g)] | R_c/mw
         
-        procedure::                 H => EnthalpyFit
-        procedure::                 EnthalpyFit
+        generic::                   Cp => CpFit_R,CpFit_Rc
+        procedure::                 CpFit_R         !following the dimension of input R
+        procedure::                 CpFit_Rc        ![J/(K*mol)], R_c as the default R
         
-        procedure::                 S => EntropyFit
-        procedure::                 EntropyFit
+        !H = \int_{0}^{T} Cp d{T}
+        generic::                   H => EnthalpyFit_R, EnthalpyFit_Rc
+        procedure::                 EnthalpyFit_R   !following the dimension of input R, if R_species[J/(K*g)], then output [J/g]
+        procedure::                 EnthalpyFit_Rc  ![J/mol], R_c as the default R
+        
+        !S = \int_{0}^{T} \frac{Cp d{T}}{T}
+        generic::                   S => EntropyFit_R, EntropyFit_Rc
+        procedure::                 EntropyFit_R    !following the dimension of input R
+        procedure::                 EntropyFit_Rc   ![J/(K*mol)], R_c as the default R
         
     end type GasSpeciesModel
     
@@ -102,18 +115,30 @@ contains
     end subroutine init_coefs
     
     !--------------------!
-    elemental real(rp) function thermoFitCoefH(this,i)
+    elemental real(rp) function thermoFitCoefH_i(this,i) result(c)
     class(GasSpeciesModel),intent(in)::     this
     integer(ip),intent(in)::                i
-        thermoFitCoefH = this%CH(i)
-    end function thermoFitCoefH
+        c = this%CH(i)
+    end function thermoFitCoefH_i
+    
+    function thermoFitCoefH_ptr(this) result(p)
+    class(GasSpeciesModel),target,intent(in)::  this
+    real(rp),pointer,dimension(:)::             p
+        p => this%CH
+    end function thermoFitCoefH_ptr
     
     !--------------------!
-    elemental real(rp) function thermoFitCoefL(this,i)
+    elemental real(rp) function thermoFitCoefL_i(this,i) result(c)
     class(GasSpeciesModel),intent(in)::     this
     integer(ip),intent(in)::                i
-        thermoFitCoefL = this%CL(i)
-    end function thermoFitCoefL
+        c = this%CL(i)
+    end function thermoFitCoefL_i
+    
+    function thermoFitCoefL_ptr(this) result(p)
+    class(GasSpeciesModel),target,intent(in)::  this
+    real(rp),pointer,dimension(:)::             p
+        p => this%CL
+    end function thermoFitCoefL_ptr
     
     !--------------------
     elemental real(rp) function molecularWeight(this)
@@ -129,58 +154,84 @@ contains
     
 !------------------------------------------------------------------------
     !specific heat capacity polynomial fitting
-    elemental real(rp) function CpFit(this,T,R) result(shcp)
+    elemental real(rp) function CpFit_R(this,T,R) result(cp)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                temperature_boundary = 1000._rp
-    
-        if(t > temperature_boundary) then
-            shcp = R*(this%thermoFitCoefH(1)*T**(-2) + this%thermoFitCoefH(2)*T**(-1) + this%thermoFitCoefH(3) &
-                  + this%thermoFitCoefH(4)*T + this%thermoFitCoefH(5)*T**2&
-                  + this%thermoFitCoefH(6)*T**3 + this%thermoFitCoefH(7)*T**4)
+    real(rp),parameter::                T_crit = 1000._rp
+    real(rp),pointer,dimension(:)::     ch,cl
+        
+        ch => this%thermoFitCoefH()
+        cl => this%thermoFitCoefL()
+        
+        if(t > T_crit) then
+            cp = R*(ch(1)*T**(-2) + ch(2)*T**(-1) + ch(3) + ch(4)*T + ch(5)*T**2 + ch(6)*T**3 + ch(7)*T**4)
         else
-            shcp = R*(this%thermoFitCoefL(1)*T**(-2) + this%thermoFitCoefL(2)*T**(-1) + this%thermoFitCoefL(3) &
-                  + this%thermoFitCoefL(4)*T + this%thermoFitCoefL(5)*T**2 &
-                  + this%thermoFitCoefL(6)*T**3 + this%thermoFitCoefL(7)*T**4)
+            cp = R*(cl(1)*T**(-2) + cl(2)*T**(-1) + cl(3) + cl(4)*T + cl(5)*T**2 + cl(6)*T**3 + cl(7)*T**4)
         end if
     
-    end function CpFit
+    end function CpFit_R
+    
+    elemental real(rp) function CpFit_Rc(this,T) result(cp)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T
+        cp = this%Cp(T,R_c)
+    end function CpFit_Rc
+    
 !------------------------------------------------------------------------
     !Specific heat enthalpy polynomial fitting
-    elemental real(rp) function EnthalpyFit(this,T,R) result(enthalpy)
+    elemental real(rp) function EnthalpyFit_R(this,T,R) result(enthalpy)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                temperature_boundary = 1000._rp
-        
-        if(t > temperature_boundary) then
-            enthalpy= R*(-this%thermoFitCoefH(1)*T**(-1) + this%thermoFitCoefH(2)*log(T)&
-                    + this%thermoFitCoefH(3)*t + this%thermoFitCoefH(4)*T**2/2._rp + this%thermoFitCoefH(5)*T**3/3._rp&
-                    + this%thermoFitCoefH(6)*T**4/4._rp + this%thermoFitCoefH(7)*T**5/5._rp + this%thermoFitCoefH(8))
+    real(rp),parameter::                T_crit = 1000._rp
+    real(rp),pointer,dimension(:)::     ch,cl
+    
+        ch => this%thermoFitCoefH()
+        cl => this%thermofitcoefl()
+        if(t > T_crit) then
+            enthalpy= R*(-ch(1)*t**(-1) + ch(2)*log(t) + ch(3)*t + ch(4)*t**2/2._rp + ch(5)*t**3/3._rp &
+                            + ch(6)*t**4/4._rp + ch(7)*t**5/5._rp + ch(8))
         else
-            enthalpy= R*(-this%thermoFitCoefL(1)*T**(-1) + this%thermoFitCoefL(2)*log(T) + this%thermoFitCoefL(3)*t&
-                    + this%thermoFitCoefL(4)*T**2/2._rp + this%thermoFitCoefL(5)*T**3/3._rp&
-                    + this%thermoFitCoefL(6)*T**4/4._rp + this%thermoFitCoefL(7)*T**5/5._rp + this%thermoFitCoefL(8))
+            enthalpy= R*(-cl(1)*t**(-1) + cl(2)*log(t) + cl(3)*t + cl(4)*t**2/2._rp + cl(5)*t**3/3._rp &
+                            + cl(6)*t**4/4._rp + cl(7)*t**5/5._rp + cl(8))
         end if
         
-    end function EnthalpyFit
+    end function EnthalpyFit_R
+    
+    !Specific heat enthalpy polynomial fitting
+    elemental real(rp) function EnthalpyFit_Rc(this,T) result(enthalpy)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T
+        enthalpy = this%H(T,R_c)
+    end function EnthalpyFit_Rc
+    
+    
 !------------------------------------------------------------------------
     !specific entropy polynomial fitting
-    elemental real(rp) function EntropyFit(this,T,R) result(entropy)
+    elemental real(rp) function EntropyFit_R(this,T,R) result(entropy)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                temperature_boundary = 1000._rp
+    real(rp),parameter::                T_crit = 1000._rp
+    real(rp),pointer,dimension(:)::     ch,cl
+    
+        ch => this%thermoFitCoefH()
+        cl => this%thermofitcoefl()
         
-        if(t > temperature_boundary) then
-            entropy = R*(-this%thermoFitCoefH(1)*T**(-2)/2._rp - this%thermoFitCoefH(2)*T**(-1)&
-                    + this%thermoFitCoefH(3)*log(T) + this%thermoFitCoefH(4)*t + this%thermoFitCoefH(5)*T**2/2._rp&
-                    + this%thermoFitCoefH(6)*T**3/3._rp + this%thermoFitCoefH(7)*T**4/4._rp + this%thermoFitCoefH(9))
+        if(t > T_crit) then
+            entropy = R*(-ch(1)*t**(-2)/2._rp - ch(2)*t**(-1) + ch(3)*log(t) + ch(4)*t + ch(5)*t**2/2._rp &
+                            + ch(6)*t**3/3._rp + ch(7)*t**4/4._rp + ch(9))
         else
-            entropy = R*(-this%thermoFitCoefL(1)*T**(-2)/2._rp - this%thermoFitCoefL(2)*T**(-1)&
-                    + this%thermoFitCoefL(3)*log(T) + this%thermoFitCoefL(4)*t + this%thermoFitCoefL(5)*T**2/2._rp&
-                    + this%thermoFitCoefL(6)*T**3/3._rp + this%thermoFitCoefL(7)*T**4/4._rp + this%thermoFitCoefL(9))
+            entropy = R*(-cl(1)*t**(-2)/2._rp - cl(2)*t**(-1) + cl(3)*log(t) + cl(4)*t + cl(5)*t**2/2._rp &
+                            + cl(6)*t**3/3._rp + cl(7)*t**4/4._rp + cl(9))
         end if
         
-    end function EntropyFit
+    end function EntropyFit_R
+    
+    !specific entropy polynomial fitting
+    elemental real(rp) function EntropyFit_Rc(this,T) result(entropy)
+    class(GasSpeciesModel),intent(in):: this
+    real(rp),intent(in)::               T
+        entropy = this%S(T,R_c)
+    end function EntropyFit_Rc
 !------------------------------------------------------------------------  
     
     

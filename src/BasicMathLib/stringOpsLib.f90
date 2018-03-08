@@ -8,24 +8,23 @@ implicit none
     public:: countsubstring,lowerString,upperString
     
     
-    
-    
     !--------------------------------------------------
     interface readKeyVal
-        procedure::  readkeyival
-        procedure::  readkeyiar1val
-        procedure::  readkeyiar2val
-        procedure::  readkeycval
-        procedure::  readkeyrval
+        procedure::  readKeyVal_integer
+        procedure::  readKeyVal_integer1rank
+        procedure::  readKeyVal_integer2rank
+        procedure::  readKeyVal_real
+        procedure::  readKeyVal_char
     end interface readKeyVal
+    
     
 contains
 
 !-------------------------------------------------
     !--
     elemental subroutine lowerString(str)
-    character(*),intent(inout)::    str
-    integer::                       i,n
+    character(*),intent(inout)::str
+    integer::                   i,n
         do i=1,len(str)
             n = ichar(str(i:i))
             if(n>=uppercase_a.and.n<=uppercase_z) then
@@ -36,8 +35,8 @@ contains
     
     !--
     elemental subroutine upperString(str)
-    character(*),intent(inout)::    str
-    integer::                       i,n
+    character(*),intent(inout)::str
+    integer::                   i,n
         do i=1,len(str)
             n = ichar(str(i:i))
             if(n>=lowercase_a.and.n<=lowercase_z) then
@@ -68,154 +67,133 @@ contains
     
 !-----------------------------------------------------------
     !--
-    pure subroutine readkeycval(string,key,val)
+    pure subroutine readKeyVal_char(string,key,val)
     character(*),intent(in)::   string,key
     character(*),intent(out)::  val
     integer(ip)::               st
     
         st = index(string,key)
-        
         if(st == 0 ) then 
-            val = 'null'
-            return
+            val = 'null'; return
         endif
-        
         st = st + len(key)
         
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            val = 'null'
-            return
+            val = 'null'; return
         endif
         st = st + 1
-        
-        !st = index(string(st:),'=') + st
+
         read(string(st:),*) val
         
-    end subroutine readkeycval
+    end subroutine readKeyVal_char
 
     !--    
-    pure subroutine readkeyrval(string,key,val)
+    pure subroutine readKeyVal_real(string,key,val)
     character(*),intent(in)::   string,key
     real(rp),intent(out)::      val
     integer(ip)::               st
+    
         st = index(string,key)
         if(st == 0 ) then 
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
-        
         st = st + len(key)
         
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
         st = st + 1
-        !st = index(string(st:),'=') + st
         
         read(string(st:),*) val
         
-    end subroutine readkeyrval
+    end subroutine readKeyVal_real
     
     !--
-    pure subroutine readkeyival(string,key,val)
+    pure subroutine readKeyVal_integer(string,key,val)
     character(*),intent(in)::   string,key
     integer(ip),intent(out)::   val
     integer(ip)::               st
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
-        
         st = st + len(key)
         
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
         st = st + 1
         
-        !st = index(string(st:),'=') + st
-        
         read(string(st:),*) val
         
-    end subroutine readkeyival
+    end subroutine readKeyVal_integer
     
-    !--
-    pure subroutine readkeyiar1val(string,key,val)
+    !--read | Key = (n,n,n)
+    pure subroutine readKeyVal_integer1rank(string,key,val)
     character(*),intent(in)::   string,key
     integer(ip),dimension(:),intent(out)::   val
     integer(ip)::               st,ed
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
-        
         st = st + len(key)
         
         !check '='
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
         st = st + 1
 
         !check '('
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='(') then
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         end if
         st = st + 1
         
         read(string(st:),*) val
         
-    end subroutine readkeyiar1val
+    end subroutine readKeyVal_integer1rank
     
-    !--
-    pure subroutine readkeyiar2val(string,key,val)
+    !--read | Key = (n,n,n)(n,n,n) | rank(3,2)
+    pure subroutine readKeyVal_integer2rank(string,key,val)
     character(*),intent(in)::   string,key
     integer(ip),dimension(:,:),intent(out)::   val
     integer(ip)::               st,n,i
     
         st = index(string,key)
         if(st == 0 ) then 
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
         
         st = st + len(key)
         st = verify(string(st:),' ') + st - 1
         if(string(st:st)/='=') then
-            call disableNumber(val)
-            return
+            call disableNumber(val); return
         endif
         st = st + 1
         
         n  = size(val,dim=2)
-        do i =1,n
+        do i=1,n
             st = verify(string(st:),' ') + st - 1
             if(string(st:st)/='(') then
-                call disableNumber(val)
-                return
+                call disableNumber(val); return
             end if
             st = st + 1
             read(string(st:),*) val(:,i)
             st = index(string(st:),')') + st
         enddo
         
-    end subroutine readkeyiar2val
-
+    end subroutine readKeyVal_integer2rank
 
 end module stringOpsLib

@@ -8,77 +8,85 @@ implicit none
     
     public::    sampleUniform
     public::    sampleAcceptRejection
-    public::    samplePullin                                    ! Generation of normal variates with given sample mean and variance
-    public::    sampleGauss
-    
+    public::    samplePullin                ! Generation of normal variates with given sample mean and variance
+    public::    sampleGauss                 ! Generation of normal variates with box-muller scheme
+    public::    sampleBoxMuller
     
 !--------------------------------------------------
-    interface sampleAcceptRejection                             ! the acceptance-rejection method
+    interface sampleAcceptRejection         ! the acceptance-rejection method
         procedure:: sampleAR_discrete
         procedure:: sampleAR_continuous
     end interface 
-    
-    
-!--------------------------------------------------
+
+!-------------------------------------------------
     abstract interface
         pure real(rp) function abs_df1(i)
         import:: ip,rp
         integer(ip),intent(in)::    i
         end function abs_df1
     end interface
-    
-contains
 
+    
 !-------------------------------------------------
+contains
+!-------------------------------------------------
+
+    
     pure real(rp) function sampleUniform()
 !dir$ if defined(lwRandom)
+    !a random number generator, this one is referred to a part of Bird's original program of DSMC
     integer(ip),intent(in)::    idum
-    integer(ip)::               mbig,mseed,mz,iff,ma,mj,mk,inext,inextp,i,k,ii
-    real(rp)::                  fac,rf
-    save ma,inext,inextp
-    parameter (mbig=1000000000,mseed=161803398,mz=0,fac=1.e-9)
-    dimension ma(55)
-    data iff/0/
-    if(idum < 0.or.iff == 0) then
-        iff=1
-        mj=mseed-iabs(idum)
-        mj=mod(mj,mbig)
-        ma(55)=mj
-        mk=1
-        do i=1,54
-            ii=mod(21*i,55)
-            ma(ii)=mk
-            mk=mj-mk
-            if(mk<mz) mk=mk+mbig
-            mj=ma(ii)
-        end do
-        do k=1,4
-            do i=1,55
-                ma(i)=ma(i)-ma(1+mod(i+30,55))
-                if(ma(i)<mz) ma(i)=ma(i)+mbig
+    integer(ip)::               iff=0,ma(55),mj,mk,inext,inextp,i,k,ii
+    real(rp)::                  rf
+    integer(ip),parameter::     mbig=1000000000, mseed=161803398, mz=0
+    real(rp),parameter::        fac = 1.e-9_rp
+    save::                      ma,inext,inextp
+
+        if(idum < 0.or.iff == 0) then
+            iff=1
+            mj=mseed-iabs(idum)
+            mj=mod(mj,mbig)
+            ma(55)=mj
+            mk=1
+            do i=1,54
+                ii=mod(21*i,55)
+                ma(ii)=mk
+                mk=mj-mk
+                if(mk<mz) mk=mk+mbig
+                mj=ma(ii)
             end do
-        end do
-        inext=0
-        inextp=31
-    end if
-    do while(.true.)
-        inext=inext+1
-        if(inext==56) inext=1
-        inextp=inextp+1
-        if(inextp==56) inextp=1
-        mj=ma(inext)-ma(inextp)
-        if(mj<mz) mj=mj+mbig
-        ma(inext)=mj
-        rf=mj*fac
-        if(rf>1.e-8.and.rf < 0.99999999) return
-    end do 
+            do k=1,4
+                do i=1,55
+                    ma(i)=ma(i)-ma(1+mod(i+30,55))
+                    if(ma(i)<mz) ma(i)=ma(i)+mbig
+                end do
+            end do
+            inext=0
+            inextp=31
+        end if
+        do while(.true.)
+            inext = inext+1
+            if(inext==56) inext = 1
+            inextp = inextp+1
+            if(inextp==56) inextp = 1
+            mj = ma(inext)-ma(inextp)
+            if(mj<mz) mj = mj+mbig
+            ma(inext) = mj
+            rf = mj*fac
+            if(rf>1.e-8.and.rf < 0.99999999) return
+        end do 
+        
 !dir$ else
     real(rp),parameter::    ranf_normalized = 2._rp**31 - 1._rp
         sampleUniform = ranf() / ranf_normalized
 !dir$ end if
+        
     end function sampleUniform
+
     
-    !--
+!-------------------------------------------------
+    !--Accept-Rejection method, refer to
+    !https://zhuanlan.zhihu.com/p/25610149
     pure integer(ip) function sampleAR_discrete(f1,fmax,xmin,xmax) result(x)
     procedure(abs_df1)::        f1        !the probability density function that is needed to input
     real(rp),intent(in)::       fmax
@@ -88,7 +96,7 @@ contains
         end do
     end function sampleAR_discrete
     
-!-------------------------------------------------
+    !--
     pure real(rp) function sampleAR_continuous(f1,fmax,xmin,xmax) result(x)
     procedure(absf1)::          f1
     real(rp),intent(in)::       fmax,xmin,xmax
@@ -156,15 +164,27 @@ contains
         end if
     end function samplePullin
     
-    !----------------------------------------
+    !--
     pure real(rp) function sampleGauss()
-    real(rp)::                  U1,U2
+    real(rp)::                  u1,u2
     
-        U1 = sampleUniform()
-        U2 = sampleUniform()
-        sampleGauss = sqrt(-2._rp*log(U1))*COS(2._rp*pi*U2)
+        u1 = sampleUniform()
+        u2 = sampleUniform()
+        samplegauss = sqrt(-2._rp*log(u1))*cos(2._rp*pi*u2)
     
     end function sampleGauss
+    
+    !--
+    pure function sampleBoxMuller() result(s)
+    real(rp)::                  u1,u2
+    real(rp),dimension(2)::     s
+    
+        u1 = sampleUniform()
+        u2 = sampleUniform()
+        s(1) = sqrt(-2._rp*log(u1))*cos(2._rp*pi*u2)
+        s(2) = sqrt(-2._rp*log(u1))*sin(2._rp*pi*u2)
+    
+    end function sampleBoxMuller
     
     
 end module samplinglib

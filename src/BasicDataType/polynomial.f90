@@ -180,6 +180,7 @@ contains
     end function contract
     
     !--
+    !if let y = polyval(this%coef_,x), ivf2018 throws error with inline optimization
     elemental real(rp) function funcval(this,x) result(y)
     class(polynomial),intent(in)::  this
     real(rp),intent(in)::           x
@@ -287,7 +288,7 @@ contains
     pure subroutine paEq(lhs,rhs)
     class(polynomial),intent(out)::     lhs
     real(rp),dimension(0:),intent(in):: rhs
-        allocate(lhs%coef_,source=rhs)
+        allocate(lhs%coef_(0:ubound(rhs,dim=1)),source=rhs)
     end subroutine paEq
     !--
     elemental type(polynomial) function psPlus(lhs,rhs) result(p)
@@ -320,7 +321,7 @@ contains
     !--
     elemental type(polynomial) function negativePoly(rhs) result(p)
     class(polynomial),intent(in)::      rhs
-        allocate(p%coef_,source=rhs%coef_)
+        allocate(p%coef_(0:ubound(rhs%coef_,dim=1)),source=rhs%coef_)
         p%coef_(:) = - p%coef_(:)
     end function negativePoly
     !--
@@ -346,7 +347,7 @@ contains
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
         if(rhs/=zero) then
-            allocate(p%coef_,source=lhs%coef_)
+            allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
             p%coef_ = rhs * p%coef_
         else
             p = zeroPolynomial()
@@ -362,7 +363,7 @@ contains
     elemental type(polynomial) function psDivide(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
-        allocate(p%coef_,source=lhs%coef_)
+        allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
         p%coef_ = p%coef_ / rhs
     end function psDivide
     !--

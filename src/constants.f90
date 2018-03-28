@@ -126,6 +126,19 @@ contains
         r   = all(lb==rb)
     end function anyiseq
     
+    !--positive integer mod 2
+    elemental integer(ip) function pimod2(i)
+    integer(ip),intent(in)::    i
+        pimod2 = ibits(i,0,1)
+    end function pimod2
+    
+    !positive integer divided by 2
+    elemental integer(ip) function pidb2(i)
+    integer(ip),intent(in)::    i
+        pidb2 = ishft(i,-1)
+    end function pidb2
+    
+    
     !-------------------------------
     pure subroutine disableProgram_
     integer(ip),dimension(:),allocatable:: n

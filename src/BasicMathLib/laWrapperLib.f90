@@ -1,5 +1,6 @@
-module LAwrapperLib
+module laWrapperLib
 use constants
+use arrayOpsLib
 !dir$ if .not. defined(without_imkl)
 use lapack95
 !dir$ end if
@@ -116,13 +117,14 @@ contains
     end subroutine inverseGeneralSquareMat
 !dir$ end if
     
+    
+!dir$ if defined (without_imkl)
     !input a [(2:n,1),(1:n,2),(1:n-1,3)]
     !refer to chasing method
     !limiting: abs(a)=>(a(1,2)>a(1,3)>0),((a(i,2)>a(i,1)+a(i,3)),(a(n,2)>a(n,1))
     !a validation refer to 
     !https://wenku.baidu.com/view/a2065cb064ce0508763231126edb6f1aff0071d7.html
     !the lapackwrapper and chasing method seem no difference below...
-!dir$ if defined (without_imkl)
     pure subroutine solveTridiagonalLES(a,b)
     real(rp),dimension(1:,1:),intent(in)::  a
     real(rp),dimension(1:),intent(inout)::  b
@@ -158,11 +160,7 @@ contains
 !dir$ end if
     
     
-    
-    
-    
-    
-    
+
 !--------------------------------------------------------------
 !emergency only and very limited
     
@@ -175,6 +173,7 @@ contains
     pure subroutine triFactorSquareMat(m)
     real(rp),dimension(:,:),intent(inout):: m
     integer(ip)::                           i,j,n
+    
 !dir$ if defined (lwcheck)
         if(size(m,dim=1)/=size(m,dim=2)) call disableProgram
 !dir$ end if
@@ -196,5 +195,144 @@ contains
         enddo
     
     end subroutine triFactorSquareMat
+    
+    
+    
+!-------------------------------------------------
+    !gmres: suppose x is in the space x_0 + \mathcal(K)_m, then we have expression
+    !x = x_0 + V_m y
+    !to solve x for min{J = |b - A x|}, then transfer to
+    !x_m = x0 + V_m y_m
+    !y_m = argmin_y | \beta e_1 - \hat{H}_m y |_2
+!-------------------------------------------------
+    !solve AX=b, A is sparse matrix, full size (n*n)
+    !nnz means number of non-zero
+    !csr structure means compressed sparse row, consists of three parts(a(nnz),ia(n+1),ja(nnz))
+    !a: the value of non-zero
+    !ia: the start of a row of the sparse matrix in <nnz> dimension
+    !ja: the location in this row, range (1:n)
+    !maxInr range (1:n)
+    pure subroutine gmres(a,ia,ja,b,maxOtr,maxInr, x)
+    real(rp),dimension(:),intent(in)::      a,ia,ja,b
+    integer(ip),intent(in)::                maxOtr,maxInr
+    real(rp),dimension(:),intent(inout)::   x
+    real(rp),parameter::                    rEps = 10._rp * GlobalEps
+    real(rp),dimension(size(b))::           r
+    real(rp),dimension(maxInr)::            c,s
+    real(rp),dimension(maxInr+1)::          g,y
+    real(rp),dimension(size(b),maxInr+1)::  v
+    real(rp),dimension(maxInr+1,maxInr)::   h
+    integer(ip)::                           i,j,iter,jcopy
+    real(rp)::                              beta,eps,av,t,mu
+    
+        !outer loop
+        do iter = 1,maxOtr
+        
+            r = b - Ax(a,ia,ja,x)
+            beta = norm2(r)
+            if(iter==1) eps = beta * rEps
+            v(:,1) = r / beta
+            
+            g = 0._rp; g(1) = beta
+            h = 0._rp
+            
+            !inner loop
+            do j=1,maxInr
+            
+                jcopy = j
+            
+                v(:,j+1) = Ax(a,ia,ja,v(:,j))
+                av = norm2(v(:,j+1))
+                
+                !--orth
+                do i=1,j
+                    h(i,j) = v(:,j+1) .ip. v(:,i)
+                    v(:,j+1) = v(:,j+1) - h(i,j)*v(:,i)
+                enddo
+                h(j+1,j) = norm2(v(:,j+1))
+                
+                !special deal for singular sparse matrix
+                if(h(j+1,j)/av < rEps) then
+                    do i=1,j
+                        t = v(:,j+1) .ip. v(:,i)
+                        h(i,j) = h(i,j) + t
+                        v(:,j+1) = v(:,j+1) - t*v(:,i)
+                    enddo
+                    h(j+1,j) = norm2(v(:,j+1))
+                endif
+                
+                if(h(j+1,j)/=0._rp) v(:,j+1) = v(:,j+1) / h(j+1,j)
+                
+                !rot
+                if(j>1) then
+                    do i=1,j-1
+                        h(i:i+1,j) = rot2([c(i),s(i)],h(i:i+1,j))
+                    enddo
+                endif
+                
+                mu = sqrt(sum(h(j:j+1,j)**2))
+                c(j) = h(j,j)/mu
+                s(j) = -h(j+1,j)/mu
+                h(j,j) = c(j) * h(j,j) - s(j) * h(j+1,j)
+                h(j+1,j) = 0._rp
+                
+                g(j:j+1) = rot2([c(j),s(j)] , g(j:j+1))
+                beta = abs(g(j+1))
+                
+                if(beta < eps) exit
+                
+            enddo
+            
+            j = jcopy - 1
+            y(j+1) = g(j+1)/h(j+1,j+1)
+            
+            do i=j,1,-1
+                y(i) = (g(i) - (h(i,i+1:j+1) .ip. y(i+1:j+1))) / h(i,i)
+            enddo
+            
+            do i=1,size(b)
+                x(i) = x(i) +  (v(i,1:j+1) .ip. y(1:j+1))
+            enddo
+            
+            if(beta < eps) exit
+            
+        enddo
+        
+    contains
+    
+        !compute Ax with csr form of A
+        pure function Ax(a,ia,ja,x)
+        real(rp),dimension(:),intent(in)::  a,ia,ja,x
+        real(rp),dimension(size(x))::       Ax
+        integer(ip)::                       i,j,k
+            Ax = 0._rp
+            do i=1,size(r)
+                j = ia(i);
+                k = ia(i+1) - 1
+                Ax(i) = Ax(i) + (a(j:k) .ip. x(ja(j:k)))
+            enddo
+        end function Ax
 
-end module LAwrapperLib
+        
+        !--
+        pure subroutine Arnoldi(v,H,ksp)
+        real(rp),dimension(:),intent(in)::      v
+        real(rp),dimension(:,:),intent(inout):: H,ksp
+        
+            
+        
+        end subroutine Arnoldi
+        
+        
+        !--
+        pure subroutine HouseholderArnoldi()
+        !real(rp),dimension(:),intent(in)::      
+        
+        
+        
+        
+        end subroutine HouseholderArnoldi
+        
+    end subroutine gmres
+
+end module laWrapperLib

@@ -7,7 +7,7 @@ use arrayOpsLib
 use stringOpsLib
 use SpecialFunctionLib
 use fftWrapperLib
-use LAwrapperLib
+use laWrapperLib
 use odelib
 implicit none
 

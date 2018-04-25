@@ -5,9 +5,16 @@ implicit none
     private
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
-    public:: magSqr,mag,angle,normal,para,orth,norm,polyval
-    public:: trace,diag,sort,cumprod
+    public:: magSqr, mag, angle, normal, para, orth, rot2, norm, polyval
+    public:: trace, diag, sort, cumprod
+    
+!some special array structure
+    
     public:: compositionNext,colexNext
+    
+    !compress stored row
+    public:: diagIxCsr
+    
     
 !---------------------------------------------
     interface operator(*)
@@ -49,15 +56,20 @@ implicit none
         procedure:: integeriseq
     end interface
     
+    interface rot2
+        procedure:: rot2Cs
+        procedure:: rot2Theta
+    end interface rot2
+    
     interface diag
         procedure:: diagCreateMatrix
         procedure:: diagExtractElement
-    end interface
+    end interface diag
     
     interface sort
         procedure:: sortOneDimension
         procedure:: sortTwoDimension
-    end interface
+    end interface sort
     
 contains
 
@@ -95,6 +107,23 @@ contains
         orth = v1 - para(v1,v2)
     end function orth
     
+    !cs means cos and sin, v is the vector
+    pure function rot2Cs(cs,v) result(r)
+    real(rp),dimension(2),intent(in)::  cs,v
+    real(rp),dimension(2)::             r
+        r(1) = cs(1)*v(1) - cs(2)*v(2)
+        r(2) = cs(2)*v(1) + cs(1)*v(2)
+    end function rot2Cs
+    
+    pure function rot2Theta(theta,v) result(r)
+    real(rp),intent(in)::               theta
+    real(rp),dimension(2),intent(in)::  v
+    real(rp),dimension(2)::             r
+        r(1) = cos(theta)*v(1) - sin(theta)*v(2)
+        r(2) = sin(theta)*v(1) + cos(theta)*v(2)
+    end function rot2Theta
+    
+    
     !Lp norm
     pure real(rp) function norm(v,p)
     real(rp),dimension(:),intent(in)::  v
@@ -126,10 +155,10 @@ contains
     
     !---------
     pure function diagCreateMatrix(m,k)
-    real(rp),dimension(:),intent(in)::                    m
-    integer(ip),intent(in)::                              k
-    real(rp),dimension(:,:),allocatable::                 diagCreateMatrix
-    integer(ip)::                                         i,j,n,p
+    real(rp),dimension(:),intent(in)::          m
+    integer(ip),intent(in)::                    k
+    real(rp),dimension(:,:),allocatable::       diagCreateMatrix
+    integer(ip)::                               i,j,n,p
         p = abs(k); n = size(m)
         allocate(diagCreateMatrix(p+n,p+n))
         diagCreateMatrix = 0._rp
@@ -147,7 +176,8 @@ contains
     !--
     pure function diagExtractElement(m)
     real(rp),dimension(:,:),intent(in)::    m
-    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diagExtractElement
+    real(rp),dimension(min(size(m,dim=1),&
+    size(m,dim=2)))::                       diagExtractElement
     integer(ip)::                           i
         forall(i=1:size(diagExtractElement)) diagExtractElement(i)=m(i,i)
     end function diagExtractElement
@@ -263,6 +293,24 @@ contains
             more = .false.
         endif
     end subroutine colexNext
+    
+    
+    
+!------------------------------------------------------------------
+    !given csr sparse matrix, give diag index of ia(j)-ia(j+1) for each row
+    !ia(n+1), ja(nnz), da(n)
+    !tip: ia(1) = 1, ia(n+1) = nnz + 1
+    pure subroutine diagIxCsr(ia,ja,da)
+    integer(ip),dimension(:),intent(in)::   ia,ja
+    integer(ip),dimension(:),intent(out)::  da
+    integer(ip)::                           i,j
+        da = -1
+        do j=1,size(da)
+            do i=ia(j),ia(j+1) - 1
+                if(ja(i)==j) da(j) = i
+            enddo
+        enddo
+    end subroutine diagIxCsr
     
     
     

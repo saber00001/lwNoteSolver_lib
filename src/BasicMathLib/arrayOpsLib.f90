@@ -143,14 +143,20 @@ contains
     end function norm
     
     !---------
-    pure real(rp) function polyval(v,x)
-    real(rp),dimension(0:),intent(in):: v
+    pure real(rp) function polyval(a,x)
+    real(rp),dimension(0:),intent(in):: a
     real(rp),intent(in)::               x
     integer(ip)::                       i
         polyval = 0._rp
-        do i=0,ubound(v,dim=1)
-            polyval = polyval + v(i) * x**i 
-        enddo
+        if(x>1._rp) then
+            do i=0,ubound(a,1)
+                polyval = polyval + a(i) * x**i 
+            enddo
+        else
+            do i=ubound(a,1),0,-1
+                polyval = polyval + a(i) * x**i 
+            enddo
+        endif
     end function polyval
     
     !---------

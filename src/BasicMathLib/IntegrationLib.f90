@@ -144,14 +144,13 @@ contains
     
     
     !---------------------------------------------------
-    subroutine QuadratureRule(rule,quadx,quadw)
+    subroutine quadratureRule(rule,quadx,quadw)
     character(*),intent(in)::               rule
     real(rp),dimension(:),intent(out)::     quadx,quadw
     character(len(rule))::                  r
-
-        r = rule
-        call lowerstring(r)
-
+    
+        r = rule;   call lowerstring(r)
+        
         select case(adjustl(r))
         case('gausslegendre','gl','legendre')
             call GaussLegendre(quadx,quadw)
@@ -160,10 +159,10 @@ contains
         case('clenshawcurtis','cc')
             call ClenshawCurtis(quadx,quadw)
         case default
-            quadx = nanrp; quadw = nanrp
+            stop 'error: IntegrationLib/quadratureRule get an unrecoganized rule type'
         end select
         
-    end subroutine QuadratureRule
+    end subroutine quadratureRule
     
 !refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
 !maybe a better choice https://github.com/Pazus/Legendre-Gauss-Quadrature/blob/master/legzo.m

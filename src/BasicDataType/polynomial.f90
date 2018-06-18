@@ -176,7 +176,8 @@ contains
                 exit
             endif
         enddo
-        allocate(cp%coef_(0:n),source=this%coef_(0:n))
+        !source = x(0:n) => lbound = 1; so should scale the cp%coef_ lbound
+        allocate(cp%coef_(0:n) , source=this%coef_(0:n))
     end function contract
     
     !--
@@ -288,7 +289,7 @@ contains
     pure subroutine paEq(lhs,rhs)
     class(polynomial),intent(out)::     lhs
     real(rp),dimension(0:),intent(in):: rhs
-        allocate(lhs%coef_(0:ubound(rhs,dim=1)),source=rhs)
+        allocate(lhs%coef_,source=rhs)
     end subroutine paEq
     !--
     elemental type(polynomial) function psPlus(lhs,rhs) result(p)
@@ -321,7 +322,7 @@ contains
     !--
     elemental type(polynomial) function negativePoly(rhs) result(p)
     class(polynomial),intent(in)::      rhs
-        allocate(p%coef_(0:ubound(rhs%coef_,dim=1)),source=rhs%coef_)
+        allocate(p%coef_,source=rhs%coef_)
         p%coef_(:) = - p%coef_(:)
     end function negativePoly
     !--
@@ -347,7 +348,7 @@ contains
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
         if(rhs/=zero) then
-            allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
+            allocate(p%coef_,source=lhs%coef_)
             p%coef_ = rhs * p%coef_
         else
             p = zeroPolynomial()
@@ -363,7 +364,7 @@ contains
     elemental type(polynomial) function psDivide(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
-        allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
+        allocate(p%coef_,source=lhs%coef_)
         p%coef_ = p%coef_ / rhs
     end function psDivide
     !--

@@ -6,10 +6,9 @@ implicit none
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
     public:: magSqr, mag, angle, normal, para, orth, rot2, norm, polyval
-    public:: trace, diag, sort, cumprod
+    public:: trace, diag, sort, cumprod, trans, repmat
     
-!some special array structure
-    
+    !some special array structure
     public:: compositionNext,colexNext
     
     !compress stored row
@@ -70,6 +69,19 @@ implicit none
         procedure:: sortOneDimension
         procedure:: sortTwoDimension
     end interface sort
+    
+    interface trans
+        procedure:: trans_rvm
+        procedure:: trans_ivm
+        procedure:: trans_rmm
+    end interface trans
+    
+    interface repmat
+        procedure:: repmat_rv
+        procedure:: repmat_iv
+        procedure:: repmat_rm
+        procedure:: repmat_im
+    end interface repmat
     
 contains
 
@@ -237,6 +249,89 @@ contains
             cumprod(i) = cumprod(i-1)*x(i)  
         end do   
     end function cumprod
+    
+    !transpose matrix
+    pure function trans_ivm(v) result(mt)
+    integer(ip),dimension(:),intent(in)::v
+    integer(ip),dimension(1,size(v))::  mt
+        mt(1,:) = v
+    end function trans_ivm
+    !--
+    pure function trans_rvm(v) result(mt)
+    real(rp),dimension(:),intent(in)::  v
+    real(rp),dimension(1,size(v))::     mt
+        mt(1,:) = v
+    end function trans_rvm
+    !--
+    pure function trans_rmm(m) result(mt)
+    real(rp),dimension(:,:),intent(in):: m
+    real(rp),dimension(size(m,2),size(m,1)):: mt
+        mt = transpose(m)
+    end function trans_rmm
+    
+    !----------------------------------------------
+    pure subroutine repmat_rv(v,m,n,rep)
+    real(rp),dimension(:),intent(in)::                  v
+    integer(ip),intent(in)::                            m,n
+    real(rp),dimension(:,:),allocatable,intent(out)::   rep
+    integer(ip)::                                       i,j,di,dj
+        allocate(rep(m*size(v),n))
+        do j=1,n
+            dj = j-1
+            do i=1,m
+                di = (i-1) * size(v)
+                rep(di+1:di+size(v),dj+1) = v
+            enddo
+        enddo
+    end subroutine repmat_rv
+    !--
+    pure subroutine repmat_rm(mat,m,n,rep)
+    real(rp),dimension(:,:),intent(in)::    mat
+    integer(ip),intent(in)::                m,n
+    real(rp),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                           i,j,di,dj,mm,mn
+        mm = size(mat,1); mn = size(mat,2)
+        allocate(rep(m*mm,n*mn))
+        do j=1,n
+            dj = (j-1) * mn
+            do i=1,m
+                di = (i-1) * mm
+                rep(di+1:di+mm,dj+1:dj+mn) = mat
+            enddo
+        enddo
+    end subroutine repmat_rm
+    !--
+    pure subroutine repmat_iv(v,m,n,rep)
+    integer(ip),dimension(:),intent(in)::               v
+    integer(ip),intent(in)::                            m,n
+    integer(ip),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                                       i,j,di,dj
+        allocate(rep(m*size(v),n))
+        do j=1,n
+            dj = j-1
+            do i=1,m
+                di = (i-1) * size(v)
+                rep(di+1:di+size(v),dj+1) = v
+            enddo
+        enddo
+    end subroutine repmat_iv
+    !--
+    pure subroutine repmat_im(mat,m,n,rep)
+    integer(ip),dimension(:,:),intent(in):: mat
+    integer(ip),intent(in)::                m,n
+    integer(ip),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                           i,j,di,dj,mm,mn
+        mm = size(mat,1); mn = size(mat,2)
+        allocate(rep(m*mm,n*mn))
+        do j=1,n
+            dj = (j-1) * mn
+            do i=1,m
+                di = (i-1) * mm
+                rep(di+1:di+mm,dj+1:dj+mn) = mat
+            enddo
+        enddo
+    end subroutine repmat_im
+    
     
     !computes the compositions of the integer n into k parts.
     !like n=2, k=2: (2,0);(1,1);(0,2) | totally 3 kinds, and this subroutine accomplish this order for next

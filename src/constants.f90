@@ -138,6 +138,12 @@ contains
         pidb2 = ishft(i,-1)
     end function pidb2
     
+    !--
+    elemental real(rp) function log2(a)
+    real(rp),intent(in)::       a
+        log2 = log(a) / log(2._rp)
+    end function log2
+    
     
     !-------------------------------
     pure subroutine disableProgram_

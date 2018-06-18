@@ -1,10 +1,10 @@
-module GasChemReactionModel_
+module GasChemReactModel_
 use constants
 use GasPerfectThermoModel_
 implicit none
 
     private          
-    public:: GasChemReactionModel
+    public:: GasChemReactModel
     public:: GasSpeciesModel
     !--
     
@@ -13,8 +13,9 @@ implicit none
     type GasSpeciesModel
         
         private
-        real(rp),allocatable,dimension(:)::     CH
-        real(rp),allocatable,dimension(:)::     CL
+        real(rp),allocatable,dimension(:)::     Ch  !fit coefficients for high temperature
+        real(rp),allocatable,dimension(:)::     Cl  !fit coefficients for low temperature
+        real(rp)::                              Tcrit_
         real(rp)::                              mw_ ![g/mol]
             
     contains  
@@ -56,7 +57,7 @@ implicit none
     end type GasSpeciesModel
     
     !------------------------------!
-    type GasChemReactionModel
+    type GasChemReactModel
         
         private
         type(GasSpeciesModel),allocatable,dimension(:)::  species
@@ -91,10 +92,10 @@ implicit none
         
         procedure,nopass::          Temperature
         
-    end type GasChemReactionModel
+    end type GasChemReactModel
         
 contains
-!-------------------------------------------------------------------------
+
     !-------------
     pure subroutine init_n(this,ncoef)
     class(GasSpeciesModel),intent(out)::    this
@@ -104,12 +105,14 @@ contains
         this%mw_ = 0._rp
     end subroutine init_n
     !--
-    pure subroutine init_coefs(this,Coef_H,Coef_L,mw)
+    pure subroutine init_coefs(this,Coef_H,Coef_L,Tcrit,mw)
     class(GasSpeciesModel),intent(out)::    this
     real(rp),dimension(:),intent(in)::      Coef_H,Coef_L
+    real(rp),intent(in)::                   Tcrit
     real(rp),intent(in)::                   mw
         allocate(this%CH,source = Coef_H)
         allocate(this%CL,source = Coef_L)
+        this%Tcrit_ = Tcrit
         this%mw_ = mw
     end subroutine init_coefs
     
@@ -156,17 +159,11 @@ contains
     elemental real(rp) function CpFit_R(this,T,R) result(cp)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                T_crit = 1000._rp
-    real(rp),pointer,dimension(:)::     ch,cl
+    real(rp),dimension(:),pointer::     ch,cl
         
-        ch => this%thermoFitCoefH()
-        cl => this%thermoFitCoefL()
-        
-        if(t > T_crit) then
-            cp = R*(ch(1)*T**(-2) + ch(2)*T**(-1) + ch(3) + ch(4)*T + ch(5)*T**2 + ch(6)*T**3 + ch(7)*T**4)
-        else
-            cp = R*(cl(1)*T**(-2) + cl(2)*T**(-1) + cl(3) + cl(4)*T + cl(5)*T**2 + cl(6)*T**3 + cl(7)*T**4)
-        end if
+        ch => this%thermoFitCoefH();    cl => this%thermoFitCoefL()
+        !the problem is how to specify the power index for any polynomial fit
+        cp = R * merge(sum(ch*T**[-2:4]) , sum(cl*T**[-2:4]) , T>this%Tcrit_)
     
     end function CpFit_R
     
@@ -181,12 +178,11 @@ contains
     elemental real(rp) function EnthalpyFit_R(this,T,R) result(enthalpy)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                T_crit = 1000._rp
     real(rp),pointer,dimension(:)::     ch,cl
     
-        ch => this%thermoFitCoefH()
-        cl => this%thermofitcoefl()
-        if(t > T_crit) then
+        ch => this%thermoFitCoefH();    cl => this%thermofitcoefl()
+        
+        if(t > this%Tcrit_) then
             enthalpy= R*(-ch(1)*t**(-1) + ch(2)*log(t) + ch(3)*t + ch(4)*t**2/2._rp + ch(5)*t**3/3._rp &
                             + ch(6)*t**4/4._rp + ch(7)*t**5/5._rp + ch(8))
         else
@@ -209,13 +205,11 @@ contains
     elemental real(rp) function EntropyFit_R(this,T,R) result(entropy)
     class(GasSpeciesModel),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),parameter::                T_crit = 1000._rp
     real(rp),pointer,dimension(:)::     ch,cl
     
-        ch => this%thermoFitCoefH()
-        cl => this%thermofitcoefl()
+        ch => this%thermoFitCoefH();    cl => this%thermofitcoefl()
         
-        if(t > T_crit) then
+        if(t > this%Tcrit_) then
             entropy = R*(-ch(1)*t**(-2)/2._rp - ch(2)*t**(-1) + ch(3)*log(t) + ch(4)*t + ch(5)*t**2/2._rp &
                             + ch(6)*t**3/3._rp + ch(7)*t**4/4._rp + ch(9))
         else
@@ -237,7 +231,7 @@ contains
     
 !-------------------------------------------------------------------------
     pure subroutine init_sp(this,sp)
-    class(GasChemReactionModel),intent(out)::       this
+    class(GasChemReactModel),intent(out)::       this
     type(GasSpeciesModel),dimension(:),intent(in):: sp
         allocate(this%species,source=sp)
     end subroutine init_sp
@@ -348,4 +342,4 @@ contains
     end function Temperature
     
     
-end module GasChemReactionModel_
+end module GasChemReactModel_

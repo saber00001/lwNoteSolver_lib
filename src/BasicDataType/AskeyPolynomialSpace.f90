@@ -30,17 +30,17 @@ implicit none
         type(polynomial),dimension(:),allocatable:: basis_
         character(10)::                             basisType_
         
-        !the coordinates is calculated by the innerproduct of this space
-        !the innerproduct is based on the quadrature rule
-        !and they maybe differ with a coef due to the normalized measurement/probability
+        !the innerproduct of the space is based on the quadrature rule
+        !innerproduct and quadarture rule may differ with a coef due to the normalized measurement/probability
         real(rp)::                                  ipMeasCoef_
         
-        !(0:so,1:np), use quadrature rule for inner product
-        real(rp),dimension(:,:),allocatable::       ipQuadxPoly_
-        real(rp),dimension(:),allocatable::         ipQuadw_
+        !(0:so,1:np), use quadrature rule for innerproduct
+        real(rp),dimension(:,:),allocatable::       quadxBasis_
+        real(rp),dimension(:),allocatable::         quadx_
+        real(rp),dimension(:),allocatable::         quadw_
         
         !use tribasis quadrature value for multiplication and division
-        !val_{ijk} = measCoef * \int \phi_i \phi_j \phi_k dp(\xi)
+        !val_{ijk} = \int \phi_i \phi_j \phi_k d(P(\xi))
         real(rp),dimension(:,:,:),allocatable::     triBasisQuadVal_
         
     contains
@@ -48,6 +48,12 @@ implicit none
         procedure::             init
         procedure::             makeOpsCoef
 
+        procedure::             quadVal
+        generic::               project => project_poly,&
+                                            project_func1
+        procedure::             project_poly    !function of polynomial form 
+        procedure::             project_func1   !one dimensional function
+        
         !operation in space, short for use
         !--binary
         procedure::             mt
@@ -75,23 +81,25 @@ implicit none
     
 contains
 
-    subroutine init(this,basisType,basis)
+    subroutine init(this,basisType,basis,np)
     class(AskeyPolynomialSpace),intent(out)::   this
     character(*),intent(in)::                   basisType
     type(polynomial),dimension(0:),intent(in):: basis
-    integer(ip)::                               truncOrder
+    integer(ip),optional,intent(in)::           np
+    integer(ip)::                               truncOrder,i
     character(len(basisType))::                 t
-    integer(ip)::                               i
     
-        !--
         truncOrder      = ubound(basis,1)
-        this%truncOd_   = truncOrder
-        this%quadNp_    = 4*truncOrder  !!3*so/2+1 is safe for triBasis, but not enough for other operator
         
         !--
-        allocate(this%basis_(0:this%truncOd_))
-        this%basis_     = basis
-    
+        this%truncOd_   = truncOrder
+        
+        !3*so/2+1 is safe for triBasis, but not enough for other operator
+        this%quadNp_    = merge(np,4*truncOrder,present(np))
+        
+        !--
+        allocate(this%basis_,source=basis)
+        
         !--
         t = basisType
         call lowerString(t)
@@ -106,7 +114,6 @@ contains
         case default
             stop 'error: AskyPolynomialSpace/init impossible error'
         end select
-        
         
         !a basisType alwasy correspond to a quadrature type
         call this%makeOpsCoef(basis,basisType,this%quadNp_,this%ipMeasCoef_)
@@ -134,10 +141,9 @@ contains
     integer(ip),intent(in)::                        quadNp
     real(rp),intent(in)::                           ipMeasCoef
     integer(ip)::                                   od,np,i,j,k
-    real(rp),dimension(:),allocatable::             x
         
-        if(allocated(this%ipQuadw_)) deallocate(this%ipQuadw_)
-        if(allocated(this%ipQuadxPoly_)) deallocate(this%ipQuadxPoly_)
+        if(allocated(this%quadw_)) deallocate(this%quadw_)
+        if(allocated(this%quadxBasis_)) deallocate(this%quadxBasis_)
         if(allocated(this%triBasisQuadVal_)) deallocate(this%triBasisQuadVal_)
         np = quadNp
         od = ubound(basis,1)
@@ -146,13 +152,13 @@ contains
         if(np<3*od) stop 'error: AskyPolynomialSpace/makeOpsCoef get a bad np or order'
         
         !do not store x, but the value of polynomial in x
-        allocate(x(np) , this%ipQuadw_(np))
-        call quadratureRule(quadType, x, this%ipQuadw_)
+        allocate(this%quadx_(np) , this%quadw_(np))
+        call quadratureRule(quadType, this%quadx_, this%quadw_)
 
-        allocate(this%ipQuadxPoly_(0:od,1:np))
+        allocate(this%quadxBasis_(0:od,1:np))
         do j=1,np
             do i=0,od
-                this%ipQuadxPoly_(i,j) = basis(i)%funcval(x(j))
+                this%quadxBasis_(i,j) = basis(i)%funcval(this%quadx_(j))
             enddo
         enddo
         
@@ -162,7 +168,7 @@ contains
             do j=0,k
                 do i=0,j
                     this%triBasisQuadVal_(i,j,k) = ipMeasCoef * &
-                        sum((this%ipQuadxPoly_(i,:)*this%ipQuadxPoly_(j,:)*this%ipQuadxPoly_(k,:))*this%ipQuadw_)
+                        sum((this%quadxBasis_(i,:)*this%quadxBasis_(j,:)*this%quadxBasis_(k,:))*this%quadw_)
                     this%triBasisQuadVal_(i,k,j) = this%triBasisQuadVal_(i,j,k)
                     this%triBasisQuadVal_(j,i,k) = this%triBasisQuadVal_(i,j,k)
                     this%triBasisQuadVal_(j,k,i) = this%triBasisQuadVal_(i,j,k)
@@ -175,7 +181,34 @@ contains
     end subroutine makeOpsCoef
 
     
+    !return the value at the quad point based on the coefficients[a]
+    pure real(rp) function quadVal(this,a,quadi)
+    class(AskeyPolynomialSpace),intent(in)::    this
+    real(rp),dimension(0:),intent(in)::         a
+    integer(ip),intent(in)::                    quadi
+        quadVal = sum(a*this%quadxBasis_(:,quadi))
+    end function quadVal
     
+    
+    !--
+    pure real(rp) function project_func1(this,f1,ibasis) result(c)
+    class(AskeyPolynomialSpace),intent(in)::    this
+    procedure(absf1)::                          f1
+    integer(ip),intent(in)::                    ibasis
+        c = this%ipMeasCoef_ * sum(f1(this%quadx_) * this%quadxBasis_(ibasis,:) * this%quadw_)
+    end function project_func1
+    
+    elemental real(rp) function project_poly(this,polyfunc,ibasis) result(c)
+    class(AskeyPolynomialSpace),intent(in)::    this
+    type(polynomial),intent(in)::               polyfunc
+    integer(ip),intent(in)::                    ibasis
+        c = this%project(pv,ibasis)
+    contains
+        elemental real(rp) function pv(x)
+        real(rp),intent(in)::   x
+            pv = polyfunc%funcval(x)
+        end function pv
+    end function project_poly
     
 !------------------------------------------
     pure function mt(this,lhs,rhs)
@@ -221,10 +254,10 @@ contains
         n = this%truncOd_; np = this%quadNp_
         allocate(quadKernel(np))
         do i=1,np
-            quadKernel(i) = func(sum(a(:) * this%ipQuadxPoly_(:,i))) * this%ipQuadw_(i)
+            quadKernel(i) = func(sum(a(:) * this%quadxBasis_(:,i))) * this%quadw_(i)
         enddo
         do i=0,n
-            o(i) = this%ipMeasCoef_ * sum(quadKernel * this%ipQuadxPoly_(i,:))
+            o(i) = this%ipMeasCoef_ * sum(quadKernel * this%quadxBasis_(i,:))
         enddo
     end function op
     

@@ -22,14 +22,21 @@ implicit none
     public:: fgmres
     public:: fgmresILUT
     
-    !totally rely on the lapack
-!dir$ if .not. defined(noMKL)
+    !rely on the lapack
+    !dir$ if .not. defined(noMKL)
+    public:: solveLinearLeastSquare
     public:: solveSymmetryLES
     public:: eigenSymTriDiagonal
     public:: inverseGeneralSquareMat
     public:: eigenTriDiagonal
-!dir$ end if
+    !dir$ end if
     
+    
+!--------------------------------------------------------
+    interface solveLinearLeastSquare
+        procedure:: solveLinearLeastSquare_1rhs
+        procedure:: solveLinearLeastSquare_nrhs
+    end interface solveLinearLeastSquare
     
 contains
 
@@ -60,6 +67,8 @@ contains
             call stev(d,eva)
         endif
     end subroutine eigenSymTriDiagonal
+    
+    
     !call steqr(d,e,z,compz,info)
     ![d]    input the diagonal vector with size(n) and output the n eigenvalues in ascending order
     ![e]    input contains the off-diagonal elements of T with size(n-1)
@@ -77,7 +86,7 @@ contains
     end subroutine eigenTriDiagonal
     
     
-!dir$ if defined (noMKL)
+    !dir$ if defined (noMKL)
     !because triFacotrSquareMat may lead U be singluar, this procedure may fails
     pure subroutine solveGeneralLES(a,b)
     real(rp),dimension(:,:),intent(inout)::     a
@@ -97,7 +106,7 @@ contains
             b(i) = ( y(i) - sum( a(i,i+1:n) * b(i+1:n) ) ) / a(i,i)
         enddo
     end subroutine solveGeneralLES
-!dir$ else
+    !dir$ else
     !refer to ?getrf of lapack
     !getrf is short for triangular factorization of general real matrices
     !solve the general linear equations system by triangular factorization
@@ -109,11 +118,35 @@ contains
         call getrf(a,ipiv)
         call getrs(a,ipiv,b)
     end subroutine solveGeneralLES
-!dir$ end if
+    !dir$ end if
     
     
-!dir$ if defined (noMKL)
-!dir$ else
+    !dir$ if .not. defined(noMKL)
+    !solve general linear least square
+    !m number of rows | n numer of columns | nrhs number of right-hand side, number of columns in B
+    !input: a(m,n) | b(max(m,n) , nrhs)
+    !output: a QR factorization if(m>=n) and LQ factorization if(m<n)
+    !output: b solution vector (1:n,nrhs)
+    !m > n overdetermined | solve for least square
+    !m < n underdetermined | solve for minimum norm solution
+    pure subroutine solveLinearLeastSquare_1rhs(a,b)
+    real(rp),dimension(:,:),intent(inout):: a
+    real(rp),dimension(:),intent(inout)::   b
+    real(rp),dimension(size(b),1)::         b0
+        b0(:,1) = b
+        call gels(a,b0)
+        b = b0(:,1)
+    end subroutine solveLinearLeastSquare_1rhs
+    !--
+    pure subroutine solveLinearLeastSquare_nrhs(a,b)
+    real(rp),dimension(:,:),intent(inout):: a,b
+        call gels(a,b)
+    end subroutine solveLinearLeastSquare_nrhs
+    !dir$ endif
+    
+    
+    !dir$ if defined (noMKL)
+    !dir$ else
     pure subroutine inverseGeneralSquareMat(a)
     real(rp),dimension(:,:),intent(inout)::     a
     integer(isp),allocatable,dimension(:)::     ipiv
@@ -121,10 +154,10 @@ contains
         call getrf(a,ipiv)
         call getri(a,ipiv)
     end subroutine inverseGeneralSquareMat
-!dir$ end if
+    !dir$ end if
     
     
-!dir$ if defined (noMKL)
+    !dir$ if defined (noMKL)
     !input a [(2:n,1),(1:n,2),(1:n-1,3)]
     !refer to chasing method
     !limiting: abs(a)=>(a(1,2)>a(1,3)>0),((a(i,2)>a(i,1)+a(i,3)),(a(n,2)>a(n,1))
@@ -154,7 +187,7 @@ contains
             b(i) = b(i) - beta(i) * b(i+1)
         enddo
     end subroutine solveTridiagonalLES
-!dir$ else    
+    !dir$ else    
     pure subroutine solveTridiagonalLES(a,b)
     real(rp),dimension(1:,1:),intent(inout)::a
     real(rp),dimension(1:),intent(inout)::  b
@@ -163,7 +196,7 @@ contains
         call dttrfb(a(2:n,1),a(1:n,2),a(1:n-1,3))
         call dttrsb(a(2:n,1),a(1:n,2),a(1:n-1,3),b)
     end subroutine solveTridiagonalLES
-!dir$ end if
+    !dir$ end if
     
     
 
@@ -180,9 +213,9 @@ contains
     real(rp),dimension(:,:),intent(inout):: m
     integer(ip)::                           i,j,n
     
-!dir$ if defined (lwcheck)
+        !dir$ if defined (lwcheck)
         if(size(m,dim=1)/=size(m,dim=2)) call disableProgram
-!dir$ end if
+        !dir$ end if
 
         n = size(m,dim=1)
         m(2:n,1) = m(2:n,1) / m(1,1)

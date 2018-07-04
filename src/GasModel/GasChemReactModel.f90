@@ -1,345 +1,556 @@
-module GasChemReactModel_
+module GasChemReactKin_
 use constants
-use GasPerfectThermoModel_
 implicit none
 
     private          
-    public:: GasChemReactModel
-    public:: GasSpeciesModel
+    public:: GasChemReactKin
+    public:: GasSpecies
     !--
     
-    
     !----------------------------------------------------------------
-    type GasSpeciesModel
+    type GasSpecies
         
         private
-        real(rp),allocatable,dimension(:)::     Ch  !fit coefficients for high temperature
-        real(rp),allocatable,dimension(:)::     Cl  !fit coefficients for low temperature
-        real(rp)::                              Tcrit_
-        real(rp)::                              mw_ ![g/mol]
-            
+        real(rp),dimension(:,:),&
+        allocatable::               ThermoCoef_ !(ncoef,ix)|[ix=1 for low][ix=2 for high]
+        real(rp)::                  Tc_         !criterion temperature for thermodynamic fit function
+        real(rp)::                  mw_         ![g/mol]
+        real(rp)::                  R_          !J/[K*g] = R_c / mw
+
     contains  
           
         generic::                   init    =>  init_n,     &
-                                                init_coefs
+                                                init_spinfo
         procedure::                 init_n
-        procedure::                 init_coefs
+        procedure::                 init_spinfo
 
         !menber function
-        generic::                   thermoFitCoefH => thermoFitCoefH_i,thermoFitCoefH_ptr
-        procedure::                 thermoFitCoefH_i
-        procedure::                 thermoFitCoefH_ptr
+        generic::                   ThermoCoefH => ThermoCoefH_i,ThermoCoefH_ptr
+        procedure::                 ThermoCoefH_i
+        procedure::                 ThermoCoefH_ptr
         
-        generic::                   thermoFitCoefL => thermoFitCoefL_i,thermoFitCoefL_ptr
-        procedure::                 thermoFitCoefL_i
-        procedure::                 thermoFitCoefL_ptr
+        generic::                   ThermoCoefL => ThermoCoefL_i,ThermoCoefL_ptr
+        procedure::                 ThermoCoefL_i
+        procedure::                 ThermoCoefL_ptr
         
         procedure::                 mw => molecularWeight
-        
         procedure::                 MolecularWeight ![g/mol]
         
         procedure::                 R               ![J/(K*g)] | R_c/mw
         
-        generic::                   Cp => CpFit_R,CpFit_Rc
-        procedure::                 CpFit_R         !following the dimension of input R
-        procedure::                 CpFit_Rc        ![J/(K*mol)], R_c as the default R
+        !based on the 
+        generic::                   Cp => CpNasa9_R,CpNasa9_Rc
+        procedure::                 CpNasa9_R         !dimension same as R, if R[J/(K*g)], then output [J/(K*g)]
+        procedure::                 CpNasa9_Rc        ![J/(K*mol)], R_c as the default R
         
         !H = \int_{0}^{T} Cp d{T}
-        generic::                   H => EnthalpyFit_R, EnthalpyFit_Rc
-        procedure::                 EnthalpyFit_R   !following the dimension of input R, if R_species[J/(K*g)], then output [J/g]
-        procedure::                 EnthalpyFit_Rc  ![J/mol], R_c as the default R
+        generic::                   H => EnthalpyNasa9_R, EnthalpyNasa9_Rc
+        procedure::                 EnthalpyNasa9_R   !dimension same as R, if R[J/(K*g)], then output [J/g]
+        procedure::                 EnthalpyNasa9_Rc  ![J/mol], R_c as the default R
         
         !S = \int_{0}^{T} \frac{Cp d{T}}{T}
-        generic::                   S => EntropyFit_R, EntropyFit_Rc
-        procedure::                 EntropyFit_R    !following the dimension of input R
-        procedure::                 EntropyFit_Rc   ![J/(K*mol)], R_c as the default R
+        generic::                   S => EntropyNasa9_R, EntropyNasa9_Rc
+        procedure::                 EntropyNasa9_R    !dimension same as R, if R[J/(K*g)], then output [J/g]
+        procedure::                 EntropyNasa9_Rc   ![J/(K*mol)], R_c as the default R
         
-    end type GasSpeciesModel
+    end type GasSpecies
+    
     
     !------------------------------!
-    type GasChemReactModel
+    type GasChemReactKin
         
         private
-        type(GasSpeciesModel),allocatable,dimension(:)::  species
+        integer(ip)::                           ns_=0, nr_=0
+        
+        type(GasSpecies),dimension(:),&
+        allocatable::                           species_
+
+        integer(ip),dimension(:,:,:),&
+        allocatable::                           stoichiometric_ !(nr,ns,ix) [ix=1 forward][ix=2 backward]
+        real(rp),dimension(:,:),allocatable::   threebody_  !(nr,ns)coef for ThreebodyCon
+        real(rp),dimension(:,:),allocatable::   arns_       !(3,nr) coef for arrhenius
+        !--
+        real(rp),dimension(:,:),allocatable::   arnsRev_!(3,nr) coef for Rev rateconstant
     
     contains
     
-        generic::                   init => init_sp
+        generic::                   init => init_sp, init_spReact
         procedure::                 init_sp
+        procedure::                 init_spReact
+        procedure::                 init_movealloc
         
-        !chemistry production of basic model, see chemKin of Ansys
-        generic::                   omega => ProductionRate_Basic
-        generic::                   ProductionRate => ProductionRate_Basic
-        procedure,nopass::          ProductionRate_Basic
+        !Chemistry production of basic model, see ChemKin of Ansys
+        !mol/cm3/s
+        generic::                   omega => ProdRate_Basic, ProdRate_mc
+        generic::                   ProdRate => ProdRate_Basic, ProdRate_mc
+        procedure,nopass::          ProdRate_Basic
+        procedure::                 ProdRate_mc
         
-        !
-        procedure,nopass::          ProgressRate
+        !mol/cm3/s
+        procedure,nopass::          ProgRate
+        procedure,nopass::          ProgRate1
         
-        !calculate rate constant => k = a T^b \exp{- \frac{Ea}{R T}}
+        !calculate rate constant => k = a T^b \exp{- \frac{Ea}{T}}
         generic::                   k => Arrhenius
-        generic::                   RateConstant => Arrhenius
         procedure,nopass::          Arrhenius
         
-        !calculate reverse Rate Constant based on Equilibrium assumption
-        generic::                   reverseRateConstant => reverseRateConstant_equilibrium!,
-        procedure,nopass::          reverseRateConstant_equilibrium
-        !procedure,nopass::          reverseRateConstant_Saha
+        procedure::                 kf => Arrheniusf_i
+        procedure::                 Arrheniusf_i
+        
+        !calculate Rev Rate Constant based on Equilibrium assumption
+        generic::                   Revk => RevRateConstant_equilibrium
+        procedure,nopass::          RevRateConstant_equilibrium
+        !procedure,nopass::          RevRateConstant_Saha
         
         !calculate Equilibrium Constant based on experience formula
         procedure,nopass::          EquilibriumConstant
         
-        procedure,nopass::          ThreeBodyConcentration
+        !--
+        generic::                   TbCon => ThreebodyCon,ThreebodyCon_molcon
+        procedure,nopass::          ThreebodyCon
+        procedure::                 ThreebodyCon_molcon
         
-        procedure,nopass::          Temperature
+        !--
+        generic::                   T => temperature_sp,temperature_kin
+        procedure,nopass::          Temperature_sp
+        procedure::                 temperature_kin
         
-    end type GasChemReactModel
+        !--
+        procedure::                 Cp => Cp_mf     !j/(K*g)
+        procedure::                 H => enthalpy_mf!j/g
+        procedure::                 S => entropy_mf !j/g
+        procedure::                 R => R_mf       !j/(K*g)
+        
+        !menber function
+        generic::                   sp => sp_ptr,sp_i
+        procedure::                 sp_i
+        procedure::                 sp_ptr
+        
+        procedure::                 smf
+        procedure::                 smr
+        
+        procedure::                 ns
+        procedure::                 nr
+        
+    end type GasChemReactKin
+    
+    !-------------
         
 contains
 
     !-------------
-    pure subroutine init_n(this,ncoef)
-    class(GasSpeciesModel),intent(out)::    this
-    integer(ip),intent(in)::                ncoef
-        allocate(this%CH(ncoef),this%CL(ncoef))
-        this%CH = 0._rp; this%CL = 0._rp
+    pure subroutine init_n(this,n,m)
+    class(GasSpecies),intent(out)::    this
+    integer(ip),intent(in)::            n,m
+        allocate(this%ThermoCoef_(n,m))
+        this%ThermoCoef_ = 0._rp
         this%mw_ = 0._rp
+        this%R_ = 0._rp
     end subroutine init_n
     !--
-    pure subroutine init_coefs(this,Coef_H,Coef_L,Tcrit,mw)
-    class(GasSpeciesModel),intent(out)::    this
-    real(rp),dimension(:),intent(in)::      Coef_H,Coef_L
-    real(rp),intent(in)::                   Tcrit
-    real(rp),intent(in)::                   mw
-        allocate(this%CH,source = Coef_H)
-        allocate(this%CL,source = Coef_L)
-        this%Tcrit_ = Tcrit
+    pure subroutine init_spinfo(this,ThermoCoef,Tc,mw)
+    class(GasSpecies),intent(out)::    this
+    real(rp),dimension(:,:),intent(in)::ThermoCoef
+    real(rp),intent(in)::               Tc
+    real(rp),intent(in)::               mw
+        allocate(this%ThermoCoef_ , source = ThermoCoef)
+        this%Tc_ = Tc
         this%mw_ = mw
-    end subroutine init_coefs
+        this%R_ = R_c/mw
+    end subroutine init_spinfo
+    
+    
     
     !--------------------!
-    elemental real(rp) function thermoFitCoefH_i(this,i) result(c)
-    class(GasSpeciesModel),intent(in)::     this
+    elemental real(rp) function ThermoCoefL_i(this,i) result(c)
+    class(GasSpecies),intent(in)::          this
     integer(ip),intent(in)::                i
-        c = this%CH(i)
-    end function thermoFitCoefH_i
+        c = this%ThermoCoef_(i,1)
+    end function ThermoCoefL_i
     
-    function thermoFitCoefH_ptr(this) result(p)
-    class(GasSpeciesModel),target,intent(in)::  this
+    function ThermoCoefL_ptr(this) result(p)
+    class(GasSpecies),target,intent(in)::  this
     real(rp),pointer,dimension(:)::             p
-        p => this%CH
-    end function thermoFitCoefH_ptr
+        p => this%ThermoCoef_(:,1)
+    end function ThermoCoefL_ptr
     
     !--------------------!
-    elemental real(rp) function thermoFitCoefL_i(this,i) result(c)
-    class(GasSpeciesModel),intent(in)::     this
+    elemental real(rp) function ThermoCoefH_i(this,i) result(c)
+    class(GasSpecies),intent(in)::          this
     integer(ip),intent(in)::                i
-        c = this%CL(i)
-    end function thermoFitCoefL_i
+        c = this%ThermoCoef_(i,2)
+    end function ThermoCoefH_i
     
-    function thermoFitCoefL_ptr(this) result(p)
-    class(GasSpeciesModel),target,intent(in)::  this
-    real(rp),pointer,dimension(:)::             p
-        p => this%CL
-    end function thermoFitCoefL_ptr
+    function ThermoCoefH_ptr(this) result(p)
+    class(GasSpecies),target,intent(in)::   this
+    real(rp),pointer,dimension(:)::         p
+        p => this%ThermoCoef_(:,2)
+    end function ThermoCoefH_ptr
+    
     
     !--------------------
     elemental real(rp) function molecularWeight(this)
-    class(GasSpeciesModel),intent(in)::     this
+    class(GasSpecies),intent(in)::     this
         MolecularWeight = this%mw_
     end function molecularWeight
     
+    
     !--------------------
     elemental real(rp) function R(this)
-    class(GasSpeciesModel),intent(in)::     this
-        R = R_c / this%mw_
+    class(GasSpecies),intent(in)::     this
+        R = this%R_
     end function R
     
-!------------------------------------------------------------------------
+    
     !specific heat capacity polynomial fitting
-    elemental real(rp) function CpFit_R(this,T,R) result(cp)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function CpNasa9_R(this,T,R) result(cp)
+    class(GasSpecies),intent(in)::      this
     real(rp),intent(in)::               T,R
-    real(rp),dimension(:),pointer::     ch,cl
+    real(rp),dimension(:),pointer::     c
         
-        ch => this%thermoFitCoefH();    cl => this%thermoFitCoefL()
-        !the problem is how to specify the power index for any polynomial fit
-        cp = R * merge(sum(ch*T**[-2:4]) , sum(cl*T**[-2:4]) , T>this%Tcrit_)
+        if(T>this%Tc_) then
+            c => this%ThermoCoefH()
+        else
+            c => this%ThermoCoefL()
+        end if
+        cp = R * sum(c(1:7)*T**[-2:4])
+        
+    end function CpNasa9_R
     
-    end function CpFit_R
-    
-    elemental real(rp) function CpFit_Rc(this,T) result(cp)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function CpNasa9_Rc(this,T) result(cp)
+    class(GasSpecies),intent(in)::      this
     real(rp),intent(in)::               T
         cp = this%Cp(T,R_c)
-    end function CpFit_Rc
+    end function CpNasa9_Rc
     
 !------------------------------------------------------------------------
     !Specific heat enthalpy polynomial fitting
-    elemental real(rp) function EnthalpyFit_R(this,T,R) result(enthalpy)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function EnthalpyNasa9_R(this,T,R) result(enthalpy)
+    class(GasSpecies),intent(in)::      this
     real(rp),intent(in)::               T,R
-    real(rp),pointer,dimension(:)::     ch,cl
+    real(rp),pointer,dimension(:)::     c
     
-        ch => this%thermoFitCoefH();    cl => this%thermofitcoefl()
-        
-        if(t > this%Tcrit_) then
-            enthalpy= R*(-ch(1)*t**(-1) + ch(2)*log(t) + ch(3)*t + ch(4)*t**2/2._rp + ch(5)*t**3/3._rp &
-                            + ch(6)*t**4/4._rp + ch(7)*t**5/5._rp + ch(8))
+        if(T>this%Tc_) then
+            c => this%ThermoCoefH()
         else
-            enthalpy= R*(-cl(1)*t**(-1) + cl(2)*log(t) + cl(3)*t + cl(4)*t**2/2._rp + cl(5)*t**3/3._rp &
-                            + cl(6)*t**4/4._rp + cl(7)*t**5/5._rp + cl(8))
+            c => this%ThermoCoefL()
         end if
+        enthalpy = -c(1)/T + c(2)*log(T) + c(8)
+        enthalpy = enthalpy + sum(c(3:7)*T**[1:5]/real([1:5],kind=rp))
+        enthalpy = R * enthalpy
         
-    end function EnthalpyFit_R
+    end function EnthalpyNasa9_R
     
     !Specific heat enthalpy polynomial fitting
-    elemental real(rp) function EnthalpyFit_Rc(this,T) result(enthalpy)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function EnthalpyNasa9_Rc(this,T) result(enthalpy)
+    class(GasSpecies),intent(in)::      this
     real(rp),intent(in)::               T
         enthalpy = this%H(T,R_c)
-    end function EnthalpyFit_Rc
+    end function EnthalpyNasa9_Rc
     
     
 !------------------------------------------------------------------------
     !specific entropy polynomial fitting
-    elemental real(rp) function EntropyFit_R(this,T,R) result(entropy)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function EntropyNasa9_R(this,T,R) result(entropy)
+    class(GasSpecies),intent(in):: this
     real(rp),intent(in)::               T,R
-    real(rp),pointer,dimension(:)::     ch,cl
-    
-        ch => this%thermoFitCoefH();    cl => this%thermofitcoefl()
+    real(rp),pointer,dimension(:)::     c
         
-        if(t > this%Tcrit_) then
-            entropy = R*(-ch(1)*t**(-2)/2._rp - ch(2)*t**(-1) + ch(3)*log(t) + ch(4)*t + ch(5)*t**2/2._rp &
-                            + ch(6)*t**3/3._rp + ch(7)*t**4/4._rp + ch(9))
+        if(T>this%Tc_) then
+            c => this%ThermoCoefH()
         else
-            entropy = R*(-cl(1)*t**(-2)/2._rp - cl(2)*t**(-1) + cl(3)*log(t) + cl(4)*t + cl(5)*t**2/2._rp &
-                            + cl(6)*t**3/3._rp + cl(7)*t**4/4._rp + cl(9))
+            c => this%ThermoCoefL()
         end if
+        entropy = -0.5_rp*c(1)/T**2 - c(2)/T + c(3)*log(T) + c(9)
+        entropy = entropy + sum(c(4:7)*T**[1:4]/real([1:4],kind=rp))
+        entropy = R * entropy
         
-    end function EntropyFit_R
+    end function EntropyNasa9_R
     
     !specific entropy polynomial fitting
-    elemental real(rp) function EntropyFit_Rc(this,T) result(entropy)
-    class(GasSpeciesModel),intent(in):: this
+    elemental real(rp) function EntropyNasa9_Rc(this,T) result(entropy)
+    class(GasSpecies),intent(in):: this
     real(rp),intent(in)::               T
         entropy = this%S(T,R_c)
-    end function EntropyFit_Rc
+    end function EntropyNasa9_Rc
 !------------------------------------------------------------------------  
     
     
-    
+!gas chem reaction model 
 !-------------------------------------------------------------------------
     pure subroutine init_sp(this,sp)
-    class(GasChemReactModel),intent(out)::       this
-    type(GasSpeciesModel),dimension(:),intent(in):: sp
-        allocate(this%species,source=sp)
+    class(GasChemReactKin),intent(out)::          this
+    type(GasSpecies),dimension(:),intent(in):: sp
+        allocate(this%species_,source=sp)
     end subroutine init_sp
+    
+    pure subroutine init_spReact(this,ThermoCoefsp,Tc,mw,sm,arns,threebody,arnsb)
+    class(GasChemReactKin),intent(out)::        this
+    integer(ip),dimension(:,:,:),intent(in)::   sm
+    real(rp),dimension(:,:,:),intent(in)::      ThermoCoefsp
+    real(rp),dimension(:,:),intent(in)::        threebody,arns
+    real(rp),dimension(:),intent(in)::          Tc,mw
+    real(rp),dimension(:,:),optional,intent(in)::arnsb
+    integer(ip)::                               i,ns,nr
+    
+        ns = size(mw)
+        nr = size(arns,2)
+        
+        this%ns_ = ns
+        this%nr_ = nr
+        
+        allocate(this%species_(ns))
+        do i=1,ns
+            call this%species_(i)%init(ThermoCoefsp(:,:,i),Tc(i),mw(i))
+        enddo
+        
+        allocate(this%stoichiometric_ , source = sm)
+        allocate(this%threebody_ , source = threebody)
+        allocate(this%arns_ , source = arns)
+        if(present(arnsb)) allocate(this%arnsRev_ , source = arnsb)
+        
+    end subroutine init_spReact
+    !--
+    pure subroutine init_movealloc(this,that)
+    class(GasChemReactKin),intent(out)::    this
+    class(GasChemReactKin),intent(inout)::  that
+        
+        this%ns_ = that%ns_
+        this%nr_ = that%nr_
+        call move_alloc(that%species_,this%species_)
+        call move_alloc(that%stoichiometric_,this%stoichiometric_)
+        call move_alloc(that%threebody_,this%threebody_)
+        call move_alloc(that%arns_,this%arns_)
+        if(allocated(that%arnsRev_)) call move_alloc(that%arnsRev_,this%arnsRev_)
+    
+    end subroutine init_movealloc
     
     
     !this is a corrected version, details refer to wiki Arrhenius method
-    elemental real(rp) function Arrhenius(a,b,Ea,R,T) result(k)
-    real(rp),intent(in)::                                   a,b,Ea,R,T
-        k = a * T**b * exp(-Ea/R/T)
+    elemental real(rp) function Arrhenius(a,b,Et,T) result(k)
+    real(rp),intent(in)::   a,b,Et,T
+        k = a * T**b * exp(-Et/T)
     end function Arrhenius
     
+    elemental real(rp) function Arrheniusf_i(this,i,T) result(k)
+    class(GasChemReactKin),intent(in):: this
+    integer(ip),intent(in)::            i
+    real(rp),intent(in)::               T
+        k = this%k(this%arns_(1,i) , this%arns_(2,i) , this%arns_(3,i) , T)
+    end function Arrheniusf_i
+    
     !production rate of concentraction[mol], Species concentraction[mol] = rho_i / MolecularWeight
-    pure function ProductionRate_Basic(Species,stoichiometricF,stoichiometricB,&
-                                        RateConstantF,RateConstantR,ThreeBodyConcentration) result(pr)
-    real(rp),dimension(:),intent(in)::                      Species,RateConstantF,RateConstantR,ThreeBodyConcentration
-    real(rp),dimension(:,:),intent(in)::                    stoichiometricF,stoichiometricB
-    real(rp),dimension(size(Species))::                     pr
-    integer(ip)::                                           si
+    pure function ProdRate_Basic(MolCon,smf,smr,kf,kr,ThreebodyCon) result(pr)
+    real(rp),dimension(:),intent(in)::              MolCon,kf,kr,ThreebodyCon
+    integer(ip),dimension(:,:),intent(in)::         smf,smr
+    real(rp),dimension(size(MolCon))::              pr
+    integer(ip)::                                   si
         do si=1,size(pr)
-            pr(si) = sum((stoichiometricB(:,si) - stoichiometricF(:,si)) * &
-                            ProgressRate( Species,stoichiometricF,stoichiometricB,&
-                            RateConstantF,RateConstantR &
-                            ) * ThreeBodyConcentration(:) &    
-                        )
+            pr(si) = sum((smr(:,si) - smf(:,si)) * ProgRate(MolCon,smf,smr,kf,kr) &
+                                                                * ThreebodyCon(:))
         enddo
-    end function ProductionRate_Basic
+    end function ProdRate_Basic
+    
+    !--
+    pure function ProdRate_mc(this,MolCon,T) result(pr)
+    class(GasChemReactKin),intent(in)::             this
+    real(rp),dimension(:),intent(in)::              MolCon  !mol/cm3
+    real(rp),intent(in)::                           T
+    real(rp),dimension(size(molcon))::              pr
+    real(rp),dimension(:),allocatable::             kf,kr
+        allocate(kf(this%nr_) , kr(this%nr_))
+        kf = this%k(this%arns_(1,:) , this%arns_(2,:) , this%arns_(3,:) , T)
+        kr = this%Revk(kf , this%species_ , this%stoichiometric_(:,:,1) , this%stoichiometric_(:,:,2) , T)
+        pr = this%ProdRate(Molcon, this%stoichiometric_(:,:,1), this%stoichiometric_(:,:,2), &
+                                    kf, kr, this%TbCon(MolCon, this%threebody_))
+    end function ProdRate_mc
     
     !rate of progress variables
-    pure function ProgressRate(Species,stoichiometricF,stoichiometricB,&
-                                                            RateConstantF,RateConstantR) result(pr)
-    real(rp),dimension(:),intent(in)::                      Species,RateConstantF,RateConstantR
-    real(rp),dimension(:,:),intent(in)::                    stoichiometricF,stoichiometricB
-    real(rp),dimension(size(RateConstantF))::               pr
-    integer(ip)::                                           ri        
-        do ri=1,size(pr)
-            pr(ri) = RateConstantF(ri) * product(Species**stoichiometricF(ri,:))
-            pr(ri) = pr(ri) - RateConstantR(ri) * product(Species**stoichiometricB(ri,:))
+    pure function ProgRate(MolCon,smf,smr,kf,kr)
+    real(rp),dimension(:),intent(in)::              MolCon,kf,kr
+    integer(ip),dimension(:,:),intent(in)::         smf,smr
+    real(rp),dimension(size(kF))::       ProgRate
+        ProgRate = prograte1(molcon,smf,kf) - prograte1(molcon,smr,kr)
+    end function ProgRate
+    !1 direction prograte
+    pure function ProgRate1(molcon,sm,k)
+    real(rp),dimension(:),intent(in)::              molcon,k
+    integer(ip),dimension(:,:),intent(in)::         sm
+    real(rp),dimension(size(k))::                   ProgRate1
+    integer(ip)::                                   i
+        do i=1,size(progRate1)  !nr
+            progRate1(i) = k(i) * product(molcon**sm(i,:))
         enddo
-    end function ProgressRate
+    end function ProgRate1
 
-    !reverseRateConstant
-    pure function reverseRateConstant_equilibrium(rateConstant,EquilibriumConstant) result(rrc)
-    real(rp),dimension(:),intent(in)::                      rateConstant,EquilibriumConstant
-    real(rp),dimension(size(rateConstant))::                rrc
-        rrc = rateConstant / EquilibriumConstant
-    end function reverseRateConstant_equilibrium
     
-    !stochiometric = stochiometricb - stochiometricf | (nr,ns)
-    !the parameters at interface are all based on SI Unit
-    pure function EquilibriumConstant(stoichiometric,entropy,enthalpy,T) result(ec)
-    real(rp),dimension(:),intent(in)::                      entropy,enthalpy
-    real(rp),dimension(:,:),intent(in)::                    stoichiometric
-    real(rp),intent(in)::                                   T
-    real(rp),dimension(size(stoichiometric,dim=1))::        ec
-    integer(ip)::                                           ri
-    real(rp),parameter::                                    Teq = P_atm / R_c * 1.e-6_rp
+    !RevRateConstant
+    pure function RevRateConstant_equilibrium(rateConstant,sp,smf,smr,T) result(rrc)
+    real(rp),dimension(:),intent(in)::              rateConstant
+    type(GasSpecies),dimension(:),intent(in):: sp
+    integer(ip),dimension(:,:),intent(in)::         smf,smr
+    real(rp),intent(in)::                           T
+    real(rp),dimension(size(rateConstant))::        rrc
+    
+        rrc = rateConstant / EquilibriumConstant(sp,smr-smf,T)
+        
+    end function RevRateConstant_equilibrium
+
+    
+    !dsm = smr - smf | (nr,ns)
     !pressure should be scaled from pa -> dynes/cm2 | p_dynes = p_atm * 10
     !universe gas constant should be scaled from J/(mol K) -> ergs/(mol K) | R_ergs = R_c * 10^7
     !then Patm / R should be scalsed like p_dynes/R_ergs = P_atm / R_c * 10^(-6) | this is expression in Chemkin
-        do ri = 1,size(ec)
-            ec(ri) = exp(sum(stoichiometric(ri,:)*entropy/R_c) - sum(stoichiometric(ri,:)*enthalpy/R_c/T)) !Kpi
-            ec(ri) = ec(ri) * (Teq/T)**(sum(stoichiometric(ri,:))) !Kci
+    pure function EquilibriumConstant(sp,dsm,T) result(c)
+    type(GasSpecies),dimension(:),intent(in):: sp
+    integer(ip),dimension(:,:),intent(in)::         dsm
+    real(rp),intent(in)::                           T
+    real(rp),dimension(size(dsm,1))::               c
+    integer(ip)::                                   k,ns
+    real(rp),parameter::                            Teq = P_atm / R_c * 1.e-6_rp
+    
+        ns = size(sp)
+        do k = 1,size(c) !nr
+            c(k) = exp(sum(dsm(k,:) * (sp([1:ns])%S(T) - sp([1:ns])%H(T)/T)) / R_c) !Kpi
+            c(k) = c(k) * (Teq/T)**(sum(dsm(k,:))) !Kci
         enddo
+        
     end function EquilibriumConstant
     
     !Three body concentration = sum(molality * Three body coefficient)
-    pure function ThreeBodyConcentration(MC,ThreeBodyCoefficient) result(tbc)
-    real(rp),dimension(:),intent(in)::                      MC ! [mol/cm^3] mole concentration
-    real(rp),dimension(:,:),intent(in)::                    ThreeBodyCoefficient
-    real(rp),dimension(size(ThreeBodyCoefficient,dim=1))::  tbc
-    integer(ip)::                                           re,nr
+    pure function ThreebodyCon(MolCon,ThreeBody) result(TbCon)
+    real(rp),dimension(:),intent(in)::              MolCon ! [mol/cm^3] mole concentration
+    real(rp),dimension(:,:),intent(in)::            ThreeBody
+    real(rp),dimension(size(ThreeBody,1))::         TbCon
+    integer(ip)::                                   re,nr
         
-        nr = size(ThreeBodyCoefficient,dim=1)
+        nr = size(ThreeBody,1)
         do re =1,nr
-            tbc(re) = sum(ThreeBodyCoefficient(re,:) * MC)
-            !not three body reaction
-            if(abs(sum(ThreeBodyCoefficient(re,:)))<Globaleps) tbc(re)=1._rp
+            if(abs(sum(ThreeBody(re,:))) < Globaleps) then
+                TbCon(re) = 1._rp !not three body reaction
+            else
+                TbCon(re) = sum(ThreeBody(re,:) * MolCon)
+            endif
         end do
           
-    end function ThreeBodyConcentration
+    end function ThreebodyCon
+    !--
+    pure function ThreebodyCon_molcon(this,MolCon) result(TbCon)
+    class(GasChemReactKin),intent(in)::             this
+    real(rp),dimension(:),intent(in)::              MolCon ! [mol/cm^3] mole concentration
+    real(rp),dimension(:),allocatable::             TbCon
+        
+        allocate(TbCon,source=this%TbCon(MolCon,this%ThreeBody_))
+
+    end function ThreebodyCon_molcon
     
     !caculate gas temperature |general Unit of Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
-    pure real(rp) function Temperature(T0,energy,Yi,Sp) result(T)
-    real(rp),intent(in)::                                   T0,energy ! |energy = Cv*T
-    real(rp),dimension(:),intent(in)::                      Yi
-    type(GasSpeciesModel),dimension(:),intent(in)::         Sp
-    integer(ip)::                                           counter
-    real(rp)::                                              Tt,f,fp,energyScaledUI
-    real(rp),dimension(size(Sp))::                          cpi,hi,Ri
+    pure real(rp) function Temperature_Sp(sp,T0,e,massfrac) result(T)
+    type(GasSpecies),dimension(:),intent(in)::  sp          !
+    real(rp),intent(in)::                       T0,e        !e = Cv*T inner e [J/kg]
+    real(rp),dimension(:),intent(in)::          massfrac    !mass fraction
+    integer(ip)::                               counter
+    real(rp)::                                  Tt,f,fp,eG
+    real(rp),dimension(size(sp))::              cpi,hi,Ri
     
         !scale J/kg -> J/g
-        energyScaledUI = energy * 1.e-3_rp
-        Ri = Sp%R()
+        eG = e * 1.e-3_rp
+        Ri = sp%R()
         
         !newton iterative method| [f] is energy conservative function, and [fp] is the derived function
         counter=0; T = T0; Tt = 0._rp
-        do while(counter<=15.and.abs(T-Tt) > GlobalEps * 1000._rp)
+        do while(counter<=15 .and. abs(T-Tt) > GlobalEps*100._rp)
             counter = counter + 1
             Tt = T
-            Cpi = Sp%Cp(Tt,Ri)
-            Hi  = Sp%H(Tt,Ri)
+            Cpi = sp%Cp(Tt,Ri); Hi  = sp%H(Tt,Ri)
             
-            f  = sum(Yi*Hi) - sum(Yi*Ri)*Tt - energyScaledUI
-            fp = sum(Yi*Cpi) - sum(Yi*Ri)
+            !f = rhoH - rhoRT - e = 0._rp | e is constant
+            f  = sum(massfrac*Hi) - sum(massfrac*Ri)*Tt - eG
+            !fp = rhoCp - rhoR
+            fp = sum(massfrac*Cpi) - sum(massfrac*Ri)
+            !x = x0 - f(x)/f'(x)
             T = Tt - f/fp
         end do
         
-    end function Temperature
+    end function Temperature_Sp
+    
+    pure real(rp) function temperature_kin(this,T0,e,massfrac) result(T)
+    class(GasChemReactKin),intent(in)::     this
+    real(rp),intent(in)::                   T0,e        !e = Cv*T inner e [J/kg]
+    real(rp),dimension(:),intent(in)::      massfrac    !mass fraction
+    type(GasSpecies),dimension(:),pointer:: sp          
+        
+        sp = this%sp()
+        T = this%T(sp,T0,e,massfrac)
+    
+    end function temperature_kin
+    
+    !--output j/(K*g)
+    pure real(rp) function Cp_mf(this,T,massfrac) result(c)
+    class(GasChemReactKin),intent(in)::     this
+    real(rp),intent(in)::                   T
+    real(rp),dimension(:),intent(in)::      massfrac
+    integer(ip)::                           i
+        c = sum(massfrac * this%species_%Cp(T,this%species_%R()))   
+    end function Cp_mf
+    
+    !--output j/g
+    pure real(rp) function enthalpy_mf(this,T,massfrac) result(e)
+    class(GasChemReactKin),intent(in)::     this
+    real(rp),intent(in)::                   T
+    real(rp),dimension(:),intent(in)::      massfrac
+    integer(ip)::                           i
+        e = sum(massfrac * this%species_%H(T,this%species_%R()))
+    end function enthalpy_mf
+    
+    !--output j/g
+    pure real(rp) function entropy_mf(this,T,massfrac) result(e)
+    class(GasChemReactKin),intent(in)::     this
+    real(rp),intent(in)::                   T
+    real(rp),dimension(:),intent(in)::      massfrac
+        e = sum(massfrac * this%species_%S(T,this%species_%R()))
+    end function entropy_mf
+    
+    !--output j/(K*g)
+    pure real(rp) function R_mf(this,massfrac)
+    class(GasChemReactKin),intent(in)::     this
+    real(rp),dimension(:),intent(in)::      massfrac
+        R_mf = sum(massfrac * this%species_([1:this%ns_])%R())
+    end function R_mf
     
     
-end module GasChemReactModel_
+    pure type(GasSpecies) function sp_i(this,i)
+    class(GasChemReactKin),intent(in)::   this
+    integer(ip),intent(in)::                i
+        sp_i = this%species_(i)
+    end function sp_i
+    
+    function sp_ptr(this)
+    class(GasChemReactKin),target,intent(in)::this
+    type(GasSpecies),dimension(:),pointer::sp_ptr 
+        sp_ptr => this%species_
+    end function sp_ptr
+    
+    function smf(this)
+    class(GasChemReactKin),target,intent(in)::this
+    integer(ip),dimension(:,:),pointer::    smf
+        smf => this%stoichiometric_(:,:,1)
+    end function smf
+    
+    function smr(this)
+    class(GasChemReactKin),target,intent(in)::this
+    integer(ip),dimension(:,:),pointer::    smr
+        smr => this%stoichiometric_(:,:,2)
+    end function smr
+    
+    pure integer(ip) function ns(this)
+    class(GasChemReactKin),intent(in)::   this
+        ns = this%ns_
+    end function ns
+    
+    pure integer(ip) function nr(this)
+    class(GasChemReactKin),intent(in)::   this
+        nr = this%nr_
+    end function nr
+    
+end module GasChemReactKin_

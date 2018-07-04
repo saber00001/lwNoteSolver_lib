@@ -10,6 +10,16 @@ implicit none
         procedure:: geoMultiLevelMonteCarlo
     end interface gmlmc
 
+    
+    !--
+    abstract interface
+        pure function mlmcfn(lvl,N) result(s)
+        import:: ip,rp
+        integer(ip),intent(in)::    lvl,N
+        real(rp),dimension(6)::     s
+        end function mlmcfn
+    end interface
+    
 contains
 
     !alpha -> weak error ~ O(2^{-alpha*l})
@@ -18,6 +28,7 @@ contains
     !sumsl(1,:) = sum(Y)
     !sumsl(2,:) = sum(Y^2)
     pure subroutine geoMultiLevelMonteCarlo(fn,maxlvl,eps,nl0,alpha0,beta0,gamma,r)
+    procedure(mlmcfn)::                     fn
     integer(ip),dimension(0:),intent(in)::  nl0 !the number of samples on lvl 0,1,2
     integer(ip),intent(in)::                maxlvl
     real(rp),intent(in)::                   eps,alpha0,beta0,gamma
@@ -25,17 +36,9 @@ contains
     integer(ip)::                           i,l,l1,lvl,lvl1
     integer(ip),dimension(maxlvl)::         dnl,nl,nsmp  !
     real(rp),dimension(maxlvl)::            ml,vl,cl,x   !mean and variance
-    real(rp)::                              alpha,beta,rem,sums(4),sumsl(4,maxlvl)
+    real(rp)::                              alpha,beta,rem,sums(6),sumsl(6,maxlvl)
     integer(ip),dimension(:,:),allocatable::idx
     real(rp),dimension(:,:),allocatable::   A
-    abstract interface
-        pure function fn(lvl,N)
-        import:: ip,rp
-        integer(ip),intent(in)::    lvl,N
-        real(rp),dimension(4)::     fn
-        end function fn
-    end interface
-    !------------------------------------------------------
     
         alpha = max(0._rp,alpha0)
         beta = max(0._rp,beta0)
@@ -111,18 +114,22 @@ contains
         
     end subroutine geoMultiLevelMonteCarlo
     
-    !---
-    pure subroutine geoMultiLevelMonteCarloTest(fn,costfactor,N,L,N0,eps)
-    real(rp),intent(in)::       costfactor,eps
-    integer(ip),intent(in)::    n,l,n0
-    abstract interface
-        pure function fn(lvl,N)
-        import:: ip,rp
-        integer(ip),intent(in)::lvl,N
-        real(rp),dimension(4):: fn
-        end function fn
-    end interface
+    !costf -> costfactor ~ 2**gamma
+    pure subroutine geoMultiLevelMonteCarloTest(fn,maxlvl,costf,N,lvl,N0,eps)
+    procedure(mlmcfn)::             fn
+    integer(ip),intent(in)::        maxlvl,n,lvl,n0
+    real(rp),intent(in)::           costf,eps
+    real(rp),dimension(maxlvl)::    del1,del2,var1,var2
+    integer(ip)::                   l
+    real(rp)::                      sums(6)
+        
+        do l=1,lvl
+            sums = fn(lvl,n)
+        
+        enddo
     
+        
+        
         
     
     end subroutine geoMultiLevelMonteCarloTest

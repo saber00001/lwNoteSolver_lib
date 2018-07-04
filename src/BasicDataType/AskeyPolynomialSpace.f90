@@ -76,6 +76,7 @@ implicit none
         !member function
         procedure::             truncOd
         procedure::             quadNp
+        procedure::             quadx
     
     end type AskeyPolynomialSpace
     
@@ -379,5 +380,11 @@ contains
     class(AskeyPolynomialSpace),intent(in)::this
         quadNp = this%quadNp_
     end function quadNp
+    
+    pure real(rp) function quadx(this,i)
+    class(AskeyPolynomialSpace),intent(in)::this
+    integer(ip),intent(in)::                i
+        quadx = this%quadx_(i)
+    end function quadx
     
 end module AskeyPolynomialSpace_

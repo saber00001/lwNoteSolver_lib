@@ -9,7 +9,7 @@ implicit none
     public::    sampleUniform
     public::    sampleAcceptRejection
     public::    samplePullin                ! Generation of normal variates with given sample mean and variance
-    public::    sampleGauss                 ! Generation of normal variates with box-muller scheme
+    public::    sampleNormal                ! Generation of normal variates with box-muller scheme
     public::    sampleBoxMuller
     !--
     public::    random
@@ -17,7 +17,7 @@ implicit none
     
     
     
-!--------------------------------------------------
+    !--------------------------------------------------
     interface sampleAcceptRejection         ! the acceptance-rejection method
         procedure:: sampleAR_discrete
         procedure:: sampleAR_continuous
@@ -32,8 +32,9 @@ implicit none
         procedure:: randomSeed_input
         procedure:: randomSeed_null
     end interface randomSeed
-
-!-------------------------------------------------
+    
+    
+    !--
     abstract interface
         pure real(rp) function abs_df1(i)
         import:: ip,rp
@@ -58,7 +59,7 @@ contains
         call random_seed()
     end subroutine randomSeed_null
     
-!dir$ if defined(lwRandom)
+    !dir$ if defined(lwRandom)
     pure real(rp) function random()
     !a random number generator, this one is referred to a part of Bird's original program of DSMC
     integer(ip),intent(in)::    idum
@@ -99,14 +100,14 @@ contains
             if(mj<mz) mj = mj+mbig
             ma(inext) = mj
             rf = mj*fac
-            if(rf>1.e-8.and.rf < 0.99999999) return
+            if(rf>1.e-8_rp.and.rf < 0.99999999_rp) return
         end do 
     end function random
-!dir$ else
+    !dir$ else
     real(rp) function random()
         call random_number(random)
     end function random
-!dir$ end if
+    !dir$ end if
     
 
     
@@ -122,7 +123,7 @@ contains
     !--Accept-Rejection method, refer to
     !https://zhuanlan.zhihu.com/p/25610149
     integer(ip) function sampleAR_discrete(f1,fmax,xmin,xmax) result(x)
-    procedure(abs_df1)::        f1        !the probability density function that is needed to input
+    procedure(abs_df1)::        f1      !the probability density function that is needed to input
     real(rp),intent(in)::       fmax
     integer(ip),intent(in)::    xmin,xmax
         do; x = xmin + int(sampleUniform()*dfloat(xmax+1-xmin),kind=ip)
@@ -138,7 +139,6 @@ contains
             if(f1(x) / fmax > sampleUniform()) exit
         end do
     end function sampleAR_continuous
-    
     
 !-------------------------------------------------
 !generate samples from Gaussian/normal distribution
@@ -201,25 +201,21 @@ contains
     end function samplePullin
     
     !--
-    real(rp) function sampleGauss()
+    real(rp) function sampleNormal()
     real(rp)::                  u1,u2
-    
         u1 = sampleUniform()
         u2 = sampleUniform()
-        samplegauss = sqrt(-2._rp*log(u1))*cos(2._rp*pi*u2)
-    
-    end function sampleGauss
+        sampleNormal = sqrt(-2._rp*log(u1))*cos(2._rp*pi*u2)
+    end function sampleNormal
     
     !--
     function sampleBoxMuller() result(s)
     real(rp)::                  u1,u2
     real(rp),dimension(2)::     s
-    
         u1 = sampleUniform()
         u2 = sampleUniform()
         s(1) = sqrt(-2._rp*log(u1))*cos(2._rp*pi*u2)
         s(2) = sqrt(-2._rp*log(u1))*sin(2._rp*pi*u2)
-    
     end function sampleBoxMuller
     
     

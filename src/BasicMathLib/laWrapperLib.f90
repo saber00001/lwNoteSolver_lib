@@ -1,4 +1,5 @@
 !dir$ if .not. defined(noMKL)
+!recursive communication interface for iterative sparse solver
 include 'mkl_rci.f90'
 !dir$ end if
     
@@ -18,6 +19,7 @@ implicit none
     public:: solveTridiagonalLES
     public:: triFactorSquareMat
     !--
+    public:: polyfit
     public:: csrAx
     public:: fgmres
     public:: fgmresILUT
@@ -138,9 +140,12 @@ contains
         b = b0(:,1)
     end subroutine solveLinearLeastSquare_1rhs
     !--
+    !see https://www.quora.com/Is-it-better-to-do-QR-Cholesky-or-SVD-for-solving-least-squares-estimate-and-why
+    !the different least square methods based on QR or SVD 
     pure subroutine solveLinearLeastSquare_nrhs(a,b)
     real(rp),dimension(:,:),intent(inout):: a,b
-        call gels(a,b)
+        call gels(a,b)  !QR, 
+        !call gelss(a,b) !SVD, sigular value decomposition
     end subroutine solveLinearLeastSquare_nrhs
     !dir$ endif
     
@@ -527,5 +532,28 @@ contains
         enddo
     end subroutine csrAx
 !dir$ end if
+    
+    pure function polyfit(x,y,n)
+    real(rp),dimension(:),intent(in)::  x,y
+    integer(ip),intent(in)::            n
+    real(rp),dimension(0:n)::           polyfit
+    real(rp),dimension(size(x),n+1)::   A
+    real(rp),dimension(size(x))::       yt
+    integer(ip)::                       m,i,j
+    
+        m = size(x)
+        if(m <= n) call disableprogram !underdetermination
+
+        yt = y
+        do j=1,n+1
+            do i=1,m
+                A(i,j) = x(i)**(j-1)
+            enddo
+        enddo
+        
+        call solveLinearLeastSquare(A, yt)
+        polyfit = yt(1:n+1)
+        
+    end function polyfit
     
 end module laWrapperLib

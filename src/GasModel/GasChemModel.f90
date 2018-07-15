@@ -1,5 +1,5 @@
 module GasChemReactKin_
-use constants
+use constants, only: ip, rp, R_c, P_atm, GlobalEps
 implicit none
 
     private          
@@ -80,9 +80,8 @@ implicit none
         procedure::                 init_movealloc
         
         !Chemistry production of basic model, see ChemKin of Ansys
-        !mol/cm3/s
-        generic::                   omega => ProdRate_Basic, ProdRate_mc
-        generic::                   ProdRate => ProdRate_Basic, ProdRate_mc
+        !mol generation rate[mol/cm3/s]
+        generic::                   molPr => ProdRate_Basic, ProdRate_mc
         procedure,nopass::          ProdRate_Basic
         procedure::                 ProdRate_mc
         
@@ -310,6 +309,7 @@ contains
         if(present(arnsb)) allocate(this%arnsRev_ , source = arnsb)
         
     end subroutine init_spReact
+    
     !--
     pure subroutine init_movealloc(this,that)
     class(GasChemReactKin),intent(out)::    this
@@ -328,69 +328,79 @@ contains
     
     !this is a corrected version, details refer to wiki Arrhenius method
     elemental real(rp) function Arrhenius(a,b,Et,T) result(k)
-    real(rp),intent(in)::   a,b,Et,T
+    real(rp),intent(in)::                       a,b,Et,T
+    
         k = a * T**b * exp(-Et/T)
+        
     end function Arrhenius
     
     elemental real(rp) function Arrheniusf_i(this,i,T) result(k)
-    class(GasChemReactKin),intent(in):: this
-    integer(ip),intent(in)::            i
-    real(rp),intent(in)::               T
-        k = this%k(this%arns_(1,i) , this%arns_(2,i) , this%arns_(3,i) , T)
+    class(GasChemReactKin),intent(in)::         this
+    integer(ip),intent(in)::                    i
+    real(rp),intent(in)::                       T
+    
+        k = this%k(this%arns_(1,i), this%arns_(2,i), this%arns_(3,i), T)
+        
     end function Arrheniusf_i
     
     !production rate of concentraction[mol], Species concentraction[mol] = rho_i / MolecularWeight
-    pure function ProdRate_Basic(MolCon,smf,smr,kf,kr,ThreebodyCon) result(pr)
-    real(rp),dimension(:),intent(in)::              MolCon,kf,kr,ThreebodyCon
-    integer(ip),dimension(:,:),intent(in)::         smf,smr
-    real(rp),dimension(size(MolCon))::              pr
-    integer(ip)::                                   si
+    pure function ProdRate_Basic(MolCon,smf,smr,kf,kr,TbCon) result(pr)
+    real(rp),dimension(:),intent(in)::          MolCon,kf,kr,TbCon
+    integer(ip),dimension(:,:),intent(in)::     smf,smr
+    real(rp),dimension(size(MolCon))::          pr
+    integer(ip)::                               si
+    
         do si=1,size(pr)
-            pr(si) = sum((smr(:,si) - smf(:,si)) * ProgRate(MolCon,smf,smr,kf,kr) &
-                                                                * ThreebodyCon(:))
+            pr(si) = sum((smr(:,si) - smf(:,si)) * ProgRate(MolCon,smf,smr,kf,kr) * TbCon)
         enddo
+        
     end function ProdRate_Basic
     
     !--
     pure function ProdRate_mc(this,MolCon,T) result(pr)
-    class(GasChemReactKin),intent(in)::             this
-    real(rp),dimension(:),intent(in)::              MolCon  !mol/cm3
-    real(rp),intent(in)::                           T
-    real(rp),dimension(size(molcon))::              pr
-    real(rp),dimension(:),allocatable::             kf,kr
-        allocate(kf(this%nr_) , kr(this%nr_))
-        kf = this%k(this%arns_(1,:) , this%arns_(2,:) , this%arns_(3,:) , T)
-        kr = this%Revk(kf , this%species_ , this%stoichiometric_(:,:,1) , this%stoichiometric_(:,:,2) , T)
-        pr = this%ProdRate(Molcon, this%stoichiometric_(:,:,1), this%stoichiometric_(:,:,2), &
-                                    kf, kr, this%TbCon(MolCon, this%threebody_))
+    class(GasChemReactKin),intent(in)::         this
+    real(rp),dimension(:),intent(in)::          MolCon  !mol/cm3
+    real(rp),intent(in)::                       T
+    real(rp),dimension(size(molcon))::          pr
+    real(rp),dimension(:),allocatable::         kf,kr
+    
+        allocate(kf, source = this%kf([1:this%nr()], T))
+        allocate(kr, source = this%Revk(kf, this%sp(), this%smf(), this%smr(), T))
+        pr = this%molPr(Molcon, this%smf(), this%smr(), kf, kr, this%TbCon(MolCon))
+        
     end function ProdRate_mc
     
     !rate of progress variables
     pure function ProgRate(MolCon,smf,smr,kf,kr)
-    real(rp),dimension(:),intent(in)::              MolCon,kf,kr
-    integer(ip),dimension(:,:),intent(in)::         smf,smr
-    real(rp),dimension(size(kF))::       ProgRate
+    real(rp),dimension(:),intent(in)::          MolCon,kf,kr
+    integer(ip),dimension(:,:),intent(in)::     smf,smr
+    real(rp),dimension(size(kF))::              ProgRate
+    
         ProgRate = prograte1(molcon,smf,kf) - prograte1(molcon,smr,kr)
+        
     end function ProgRate
+    
     !1 direction prograte
     pure function ProgRate1(molcon,sm,k)
-    real(rp),dimension(:),intent(in)::              molcon,k
-    integer(ip),dimension(:,:),intent(in)::         sm
-    real(rp),dimension(size(k))::                   ProgRate1
-    integer(ip)::                                   i
+    real(rp),dimension(:),intent(in)::          molcon,k
+    integer(ip),dimension(:,:),intent(in)::     sm
+    real(rp),dimension(size(k))::               ProgRate1
+    integer(ip)::                               i
+    
         do i=1,size(progRate1)  !nr
             progRate1(i) = k(i) * product(molcon**sm(i,:))
         enddo
+        
     end function ProgRate1
 
     
     !RevRateConstant
     pure function RevRateConstant_equilibrium(rateConstant,sp,smf,smr,T) result(rrc)
-    real(rp),dimension(:),intent(in)::              rateConstant
-    type(GasSpecies),dimension(:),intent(in):: sp
-    integer(ip),dimension(:,:),intent(in)::         smf,smr
-    real(rp),intent(in)::                           T
-    real(rp),dimension(size(rateConstant))::        rrc
+    real(rp),dimension(:),intent(in)::          rateConstant
+    type(GasSpecies),dimension(:),intent(in)::  sp
+    integer(ip),dimension(:,:),intent(in)::     smf,smr
+    real(rp),intent(in)::                       T
+    real(rp),dimension(size(rateConstant))::    rrc
     
         rrc = rateConstant / EquilibriumConstant(sp,smr-smf,T)
         
@@ -400,14 +410,15 @@ contains
     !dsm = smr - smf | (nr,ns)
     !pressure should be scaled from pa -> dynes/cm2 | p_dynes = p_atm * 10
     !universe gas constant should be scaled from J/(mol K) -> ergs/(mol K) | R_ergs = R_c * 10^7
-    !then Patm / R should be scalsed like p_dynes/R_ergs = P_atm / R_c * 10^(-6) | this is expression in Chemkin
+    !then Patm / R should be scalsed like p_dynes/R_ergs = P_atm / R_c * 10^(-6) 
+    !refer to Chemkin theory mannual
     pure function EquilibriumConstant(sp,dsm,T) result(c)
-    type(GasSpecies),dimension(:),intent(in):: sp
-    integer(ip),dimension(:,:),intent(in)::         dsm
-    real(rp),intent(in)::                           T
-    real(rp),dimension(size(dsm,1))::               c
-    integer(ip)::                                   k,ns
-    real(rp),parameter::                            Teq = P_atm / R_c * 1.e-6_rp
+    type(GasSpecies),dimension(:),intent(in)::  sp
+    integer(ip),dimension(:,:),intent(in)::     dsm
+    real(rp),intent(in)::                       T
+    real(rp),dimension(size(dsm,1))::           c
+    integer(ip)::                               k,ns
+    real(rp),parameter::                        Teq = P_atm / R_c * 1.e-6_rp
     
         ns = size(sp)
         do k = 1,size(c) !nr
@@ -419,10 +430,10 @@ contains
     
     !Three body concentration = sum(molality * Three body coefficient)
     pure function ThreebodyCon(MolCon,ThreeBody) result(TbCon)
-    real(rp),dimension(:),intent(in)::              MolCon ! [mol/cm^3] mole concentration
-    real(rp),dimension(:,:),intent(in)::            ThreeBody
-    real(rp),dimension(size(ThreeBody,1))::         TbCon
-    integer(ip)::                                   re,nr
+    real(rp),dimension(:),intent(in)::          MolCon ! [mol/cm^3] mole concentration
+    real(rp),dimension(:,:),intent(in)::        ThreeBody
+    real(rp),dimension(size(ThreeBody,1))::     TbCon
+    integer(ip)::                               re,nr
         
         nr = size(ThreeBody,1)
         do re =1,nr
@@ -434,38 +445,40 @@ contains
         end do
           
     end function ThreebodyCon
+    
     !--
     pure function ThreebodyCon_molcon(this,MolCon) result(TbCon)
-    class(GasChemReactKin),intent(in)::             this
-    real(rp),dimension(:),intent(in)::              MolCon ! [mol/cm^3] mole concentration
-    real(rp),dimension(:),allocatable::             TbCon
+    class(GasChemReactKin),intent(in)::         this
+    real(rp),dimension(:),intent(in)::          MolCon ! [mol/cm^3] mole concentration
+    real(rp),dimension(:),allocatable::         TbCon
         
         allocate(TbCon,source=this%TbCon(MolCon,this%ThreeBody_))
 
     end function ThreebodyCon_molcon
     
-    !caculate gas temperature |general Unit of Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
+    !caculate gas temperature 
+    !Ri = Rc/mw [J][K-1][mol-1][mol][g-1] = [J][K-1][g-1]
     pure real(rp) function Temperature_Sp(sp,T0,e,massfrac) result(T)
     type(GasSpecies),dimension(:),intent(in)::  sp          !
-    real(rp),intent(in)::                       T0,e        !e = Cv*T inner e [J/kg]
+    real(rp),intent(in)::                       T0,e        !e = Cv*T inner e [J/g]
     real(rp),dimension(:),intent(in)::          massfrac    !mass fraction
     integer(ip)::                               counter
-    real(rp)::                                  Tt,f,fp,eG
+    real(rp)::                                  Tt,f,fp
     real(rp),dimension(size(sp))::              cpi,hi,Ri
     
-        !scale J/kg -> J/g
-        eG = e * 1.e-3_rp
         Ri = sp%R()
         
-        !newton iterative method| [f] is energy conservative function, and [fp] is the derived function
+        !newton iterative method
+        ![f] is energy conservative function
+        ![fp] is the derived function
         counter=0; T = T0; Tt = 0._rp
         do while(counter<=15 .and. abs(T-Tt) > GlobalEps*100._rp)
             counter = counter + 1
             Tt = T
             Cpi = sp%Cp(Tt,Ri); Hi  = sp%H(Tt,Ri)
             
-            !f = rhoH - rhoRT - e = 0._rp | e is constant
-            f  = sum(massfrac*Hi) - sum(massfrac*Ri)*Tt - eG
+            !f = rhoH - rhoRT - e = 0._rp | e is constant | J/g
+            f  = sum(massfrac*Hi) - sum(massfrac*Ri)*Tt - e
             !fp = rhoCp - rhoR
             fp = sum(massfrac*Cpi) - sum(massfrac*Ri)
             !x = x0 - f(x)/f'(x)
@@ -476,11 +489,11 @@ contains
     
     pure real(rp) function temperature_kin(this,T0,e,massfrac) result(T)
     class(GasChemReactKin),intent(in)::     this
-    real(rp),intent(in)::                   T0,e        !e = Cv*T inner e [J/kg]
+    real(rp),intent(in)::                   T0,e        !e = Cv*T inner e [J/g]
     real(rp),dimension(:),intent(in)::      massfrac    !mass fraction
     type(GasSpecies),dimension(:),pointer:: sp          
         
-        sp = this%sp()
+        sp => this%sp()
         T = this%T(sp,T0,e,massfrac)
     
     end function temperature_kin

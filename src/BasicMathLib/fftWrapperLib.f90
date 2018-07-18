@@ -1,4 +1,4 @@
-!dir$ if .not. defined(without_imkl)
+!dir$ if .not. defined(noMKL)
 include 'mkl_dfti.f90'
 !dir$ end if
 
@@ -9,7 +9,7 @@ include 'mkl_dfti.f90'
 !-------------------------------------------------------------
 module fftWrapperLib
 use constants
-!dir$ if .not. defined(without_imkl)
+!dir$ if .not. defined(noMKL)
 use mkl_dfti
 !dir$ end if
 implicit none
@@ -45,6 +45,7 @@ contains
         status = dftiCommitDescriptor(hand)
         status = dftiComputeForward(hand,x)
         status = dftiFreeDescriptor(hand)
+        call mkl_free_buffers
     end subroutine fft_1d_cdp
     !--
     !subroutine fft_2d_cdp(x)
@@ -83,6 +84,7 @@ contains
         status = dftiComputeBackward(hand,x)
         status = dftiFreeDescriptor(hand)
         x = x / dfloat(n)
+        call mkl_free_buffers
     end subroutine ifft_1d_cdp
     
 

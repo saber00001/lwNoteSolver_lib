@@ -1,11 +1,11 @@
-module GasPerfectThermoModel_
+module GasThermo_
 use constants
 implicit none
 
     private
-    public:: GasPerfectThermoModel
+    public:: GasThermo
     
-    type GasPerfectThermoModel
+    type GasThermo
         
     contains
     
@@ -13,17 +13,18 @@ implicit none
         generic::                   Sutherland => Sutherland_custom,Sutherland_air
         procedure,nopass::          Sutherland_custom
         procedure,nopass::          Sutherland_air
+        
         !-------------
         !idealGasModel
         !-------------
         !ideal Gas state Equation T(p,rho,R)
-        procedure,nopass::          idealGasT
+        procedure,nopass::          T_ideal
 
         !ideal gas isoEntropy flow
-        procedure,nopass::          isoEntropyPressureRatio
-        procedure,nopass::          isoEntropyTemperatureRatio
+        procedure,nopass::          Pr_s => isoEntropyPressureRatio
+        procedure,nopass::          Tr_s => isoEntropyTemperatureRatio
         
-    end type GasPerfectThermoModel
+    end type GasThermo
         
 contains
     
@@ -41,10 +42,10 @@ contains
     end function Sutherland_air
     
 !------------------------------------------------------------------------
-    elemental real(rp) function idealGasT(rho,p,R) result(T)
+    elemental real(rp) function T_ideal(rho,p,R) result(T)
     real(rp),intent(in)::   rho,p,R
         T = p / rho / R
-    end function idealGasT
+    end function T_ideal
     
     !p0/p for ideal isoEntropy flow
     elemental real(rp) function isoEntropyPressureRatio(ma,gm) result(pr)
@@ -58,4 +59,4 @@ contains
         TR = 1._rp + 0.5_rp * (gm-1._rp) * ma**2
     end function isoEntropyTemperatureRatio
 
-end module GasPerfectThermoModel_
+end module GasThermo_

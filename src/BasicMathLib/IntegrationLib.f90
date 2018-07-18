@@ -7,7 +7,7 @@ use arrayOpsLib
 use stringOpsLib
 use SpecialFunctionLib
 use fftWrapperLib
-use LAwrapperLib
+use laWrapperLib
 use odelib
 implicit none
 
@@ -144,14 +144,13 @@ contains
     
     
     !---------------------------------------------------
-    subroutine QuadratureRule(rule,quadx,quadw)
+    subroutine quadratureRule(rule,quadx,quadw)
     character(*),intent(in)::               rule
     real(rp),dimension(:),intent(out)::     quadx,quadw
     character(len(rule))::                  r
-
-        r = rule
-        call lowerstring(r)
-
+    
+        r = rule;   call lowerstring(r)
+        
         select case(adjustl(r))
         case('gausslegendre','gl','legendre')
             call GaussLegendre(quadx,quadw)
@@ -160,10 +159,10 @@ contains
         case('clenshawcurtis','cc')
             call ClenshawCurtis(quadx,quadw)
         case default
-            quadx = nanrp; quadw = nanrp
+            stop 'error: IntegrationLib/quadratureRule get an unrecoganized rule type'
         end select
         
-    end subroutine QuadratureRule
+    end subroutine quadratureRule
     
 !refer to https://github.com/chebfun/chebfun/blob/34f92d12ca51003f5c0033bbeb4ff57ac9c84e78/legpts.m
 !maybe a better choice https://github.com/Pazus/Legendre-Gauss-Quadrature/blob/master/legzo.m
@@ -939,18 +938,24 @@ contains
     integer(ip)::                           dimSparseGrid,npSparseGrid
     character(len(QuadratureRule))::        rule
 
-        dimSparseGrid = size(cubx,dim=1)
-        npSparseGrid= size(cubx,dim=2)
+        !transfer to local string
         rule = QuadratureRule
         call lowerstring(rule)
+        if(rule=='clenshawcurtis')  rule = 'cc'
+        if(rule=='gausshermite')    rule = 'gh'
+        if(rule=='gausslegendre')   rule = 'gl'
+        !--------------------------------
         
-        if(rule == 'cc' .or. rule == 'clenshawcurtis') then
+        dimSparseGrid = size(cubx,dim=1)
+        npSparseGrid= size(cubx,dim=2)
+        
+        if(rule == 'cc') then
             !--
             call ClosefullyNest(dimSparseGrid,level,npSparseGrid, cubx,cubw)   !close fully nested
             !--
-        elseif(rule == 'gh' .or. rule == 'gausshermite' .or. rule == 'gl' .or. rule == 'gausslegendre') then
+        elseif(rule == 'gh'.or. rule == 'gl') then
             !--
-            call OpenWeaklyNest(dimSparseGrid,level,npSparseGrid, cubx,cubw)   !open weakly nested, only nest the middle point
+            call OpenWeaklyNest(dimSparseGrid,level,npSparseGrid, rule(1:2), cubx,cubw)   !open weakly nested, only nest the middle point
             !--
         else
             call disableprogram
@@ -958,42 +963,42 @@ contains
     
     contains
         !--
-        subroutine CloseFullyNest(dim,mlvl,npSg,x,w)
-        integer(ip),intent(in)::                dim,mlvl,npSg
+        subroutine CloseFullyNest(dim,maxlvl,npSg,x,w)
+        integer(ip),intent(in)::                dim,maxlvl,npSg
         real(rp),dimension(:,:),intent(out)::   x
         real(rp),dimension(:),intent(out)::     w
-        integer(ip)::                           npMlvl,ipt,id,i
+        integer(ip)::                           npMaxlvl,ipt,id,i
         integer(ip),dimension(dim,npSg)::       gi,gb   !gi->gridindex:  gb->gridbase
             
             !gi map one-dimensional index to sparse multi-dimensional index with index coordinate like (0,0,...0)
             !notice index from 0 to np-1
-            call levelIndexCfn(dim,mlvl,npSg, gi,gb)
+            call levelIndexCfn(dim,maxlvl,npSg, gi,gb)
             
-            npMlvl = NpAtLevelClose(mlvl)
+            npMaxlvl = NpAtLevelClose(maxlvl)
             
             !calculate x
             do ipt = 1,npSg
                 do id = 1,dim
-                    i = gi(id,ipt) + 1  !from range[0:2**mlvl] to range [1:2**mlvl+1]or[1:npMlvl]
-                    if(npMlvl==1) then  ! one point only
+                    i = gi(id,ipt) + 1  !from range[0:2**maxlvl] to range [1:2**maxlvl+1]or[1:npMaxlvl]
+                    if(npMaxlvl==1) then  ! one point only
                         x(id,ipt) = 0._rp
-                    elseif(2*(npMlvl-i)==npMlvl-1) then !middle point
+                    elseif(2*(npMaxlvl-i)==npMaxlvl-1) then !middle point
                         x(id,ipt) = 0._rp
                     else
                         ! pi -> 0, the same as | - cos(i * pi / real(nm1,kind=rp)) | i = 0:nm1
-                        x(id,ipt) = cos ( real ( npMlvl - i, kind = rp ) * pi & 
-                                    / real ( npMlvl - 1, kind = rp ) )
+                        x(id,ipt) = cos ( real ( npMaxlvl - i, kind = rp ) * pi & 
+                                    / real ( npMaxlvl - 1, kind = rp ) )
                     endif
                 enddo
             enddo
             
             !calculate w
-            call WeightCfn(dim,mlvl,npSg,gi,w)
+            call WeightCfn(dim,maxlvl,npSg,gi,w)
         
         end subroutine CloseFullyNest
         !--
-        subroutine levelIndexCfn(dim,mlvl,npSg, gridIndex,gridBase)
-        integer(ip),intent(in)::                dim,mlvl,npSg
+        subroutine levelIndexCfn(dim,maxlvl,npSg, gridIndex,gridBase)
+        integer(ip),intent(in)::                dim,maxlvl,npSg
         integer(ip),dimension(:,:),intent(out)::gridIndex,gridBase
         integer(ip),dimension(dim)::            lvl_d,np_d
         integer(ip),dimension(:,:),allocatable::giTensor
@@ -1002,8 +1007,8 @@ contains
         logical(lp)::                           more
         
             n = 0
-            !traverse indices[lvl_d] norm(lvl_d,1) <= mlvl | the smolyak rule
-            do ilvl=0,mlvl
+            !traverse indices[lvl_d] norm(lvl_d,1) <= maxlvl | the smolyak rule
+            do ilvl=0,maxlvl
                 more = .false.; h = 0; t = 0
                 
                 !traverse indices[lvl_d] norm(lvl_d,1) = ilvl
@@ -1016,12 +1021,12 @@ contains
                     call TensorGridIndexCfn(dim,np_d, giTensor)
                     
                     !--scale to reflect the level according to multiply index a power of 2
-                    !--the indices [giTensor] give the coordinate of point index at mlvl meaning
-                    call TensorGridScaleClose(dim,mlvl,lvl_d, giTensor)
+                    !--the indices [giTensor] give the coordinate of point index at maxlvl meaning
+                    call TensorGridScaleClose(dim,maxlvl,lvl_d, giTensor)
 
                     !--Determine the first level of appearance of each of the points, and calculate the norm_1 of the level of point
-                    !--glvl(ipoint) = norm(lvl(gi(:,ipoint) , 1) | for sparse grid, we just need the point [glvl(ipoint)<=mlvl]
-                    call NormOneLevelClose(dim,mlvl,gitensor, glvl)
+                    !--glvl(ipoint) = norm(lvl(gi(:,ipoint) , 1) | for sparse grid, we just need the point [glvl(ipoint)<=maxlvl]
+                    call NormOneLevelClose(dim,maxlvl,gitensor, glvl)
                     
                     do j=1,npTensor
                         if(glvl(j) == ilvl) then
@@ -1053,51 +1058,51 @@ contains
             enddo
         end subroutine TensorGridIndexCfn
         !--
-        subroutine TensorGridScaleClose(dim,mlvl,lvl_d,gi)
-        integer(ip),intent(in)::                    dim,mlvl
+        subroutine TensorGridScaleClose(dim,maxlvl,lvl_d,gi)
+        integer(ip),intent(in)::                    dim,maxlvl
         integer(ip),dimension(:),intent(in)::       lvl_d
         integer(ip),dimension(:,:),intent(inout)::  gi
         integer(ip)::                               i
             do i=1,dim
                 if(lvl_d(i)==0) then 
-                    !if lvl==0, the middle point only, and it located in the (npMlvl-1)/2 |
-                    !mlvl=2 npMlvl = 5 | 0,1,2,3,4 | the middle point located at 2 = (5-1)/2
-                    gi(i,:) = ishft(NpAtLevelClose(mlvl)-1,-1)
+                    !if lvl==0, the middle point only, and it located in the (npMaxlvl-1)/2 |
+                    !maxlvl=2 npMaxlvl = 5 | 0,1,2,3,4 | the middle point located at 2 = (5-1)/2
+                    gi(i,:) = ishft(NpAtLevelClose(maxlvl)-1,-1)
                 else
-                    !lvl_d(i) = 1 | 0,1,2 | mlvl=2 | 0,1,2,3,4 | || So we have the relation below due to the close points
+                    !lvl_d(i) = 1 | 0,1,2 | maxlvl=2 | 0,1,2,3,4 | || So we have the relation below due to the close points
                     !0{lvl=2} = 0{lvl=1}*2**(2-1)| 2{lvl=2} = 1{lvl=1}*2**(2-1) | 4{lvl=2} = 2{lvl=1}*2**(2-1)
-                    gi(i,:) = gi(i,:) * 2**(mlvl-lvl_d(i))
+                    gi(i,:) = gi(i,:) * 2**(maxlvl-lvl_d(i))
                 endif
             enddo
         end subroutine TensorGridScaleClose
         !--
-        subroutine NormOneLevelClose(dim,mlvl,giTensor,glvl)
-        integer(ip),intent(in)::                dim,mlvl
+        subroutine NormOneLevelClose(dim,maxlvl,giTensor,glvl)
+        integer(ip),intent(in)::                dim,maxlvl
         integer(ip),dimension(:,:),intent(in):: giTensor
         integer(ip),dimension(:),intent(out)::  glvl
-        integer(ip)::                           i,j,s,npMlvl,lvl
-            if(mlvl<=0) then
+        integer(ip)::                           i,j,s,npMaxlvl,lvl
+            if(maxlvl<=0) then
                 glvl = 0
             else
-                npMlvl = NpAtLevelClose(mlvl)
+                npMaxlvl = NpAtLevelClose(maxlvl)
                 !traverse all points at grid
                 do j=1,size(giTensor,dim=2)
                     glvl(j) = 0
                     do i=1,dim
-                        !giTensor(i,j) range [0:2**mlvl], and npMlvl=2**mlvl + 1
-                        s = modulo(giTensor(i,j),npMlvl)
+                        !giTensor(i,j) range [0:2**maxlvl], and npMaxlvl=2**maxlvl + 1
+                        s = modulo(giTensor(i,j),npMaxlvl)
                         if(s==0) then !only giTensor(i,j) = 0, first appearance in lvl = 1
                             lvl = 0
                         else
-                            lvl = mlvl
+                            lvl = maxlvl
                             do while(ibits(s,0,1)==0) !if s is odd, then first appearance in this lvl
                                 s = ishft(s,-1)
                                 lvl = lvl - 1
                             enddo
                         endif
-                        if(lvl==0) then !if s=0 or s=2**mlvl, transfer [lvl=0] to [lvl=1]
+                        if(lvl==0) then !if s=0 or s=2**maxlvl, transfer [lvl=0] to [lvl=1]
                             lvl = 1
-                        elseif(lvl==1) then !if s = 2**(mlvl-1), transfer [lvl=1] to [lvl=0]
+                        elseif(lvl==1) then !if s = 2**(maxlvl-1), transfer [lvl=1] to [lvl=0]
                             lvl = 0
                         endif
                         glvl(j) = glvl(j) + lvl !norm one for non-negative integer
@@ -1106,8 +1111,8 @@ contains
             endif
         end subroutine NormOneLevelClose
         !--
-        subroutine WeightCfn(dim,mlvl,npSg,gi,w)
-        integer(ip),intent(in)::                dim,mlvl,npSg
+        subroutine WeightCfn(dim,maxlvl,npSg,gi,w)
+        integer(ip),intent(in)::                dim,maxlvl,npSg
         integer(ip),dimension(:,:),intent(in):: gi
         real(rp),dimension(:),intent(out)::     w
         integer(ip)::                           ilvl,h,t,npTensor,i,j
@@ -1117,14 +1122,14 @@ contains
         integer(ip),dimension(:,:),allocatable::giTensor
         real(rp),dimension(:),allocatable::     gw
             
-            if(mlvl==0) then
+            if(maxlvl==0) then
                 w = 2._rp ** dim
                 return
             endif
             
             w = 0._rp
             !strange index
-            do ilvl=max(0,mlvl+1-dim),mlvl
+            do ilvl=max(0,maxlvl+1-dim),maxlvl
             
                 more = .false.; h=0; t=0
                 
@@ -1140,10 +1145,10 @@ contains
                     call TensorWeight(dim,np_d,'cc', gw)
                     
                     !--scale to reflect the level according to multiply index a power of 2
-                    call TensorGridScaleClose(dim,mlvl,lvl_d, giTensor)
+                    call TensorGridScaleClose(dim,maxlvl,lvl_d, giTensor)
                     
                     !--
-                    coef = merge(1._rp,-1._rp,ibits(mlvl-ilvl,0,1)==0) * binomialCoef(dim-1,mlvl-ilvl)
+                    coef = merge(1._rp,-1._rp,ibits(maxlvl-ilvl,0,1)==0) * binomialCoef(dim-1,maxlvl-ilvl)
                     do j=1,npTensor
                         do i=1,npSg
                             if(all(giTensor(:,j)==gi(:,i))) w(i) = w(i) + coef*gw(j)
@@ -1157,19 +1162,99 @@ contains
         
         end subroutine WeightCfn
         !--
-        subroutine OpenWeaklyNest(dim,mlvl,npSg,x,w)
-        integer(ip),intent(in)::                dim,mlvl,npSg
+        subroutine OpenWeaklyNest(dim,maxlvl,npSg,rule,x,w)
+        integer(ip),intent(in)::                dim,maxlvl,npSg
+        character(*),intent(in)::               rule
         real(rp),dimension(:,:),intent(out)::   x
         real(rp),dimension(:),intent(out)::     w
+        integer(ip),dimension(dim)::            lvl_d,np_d,gbase
+        integer(ip),dimension(:,:),allocatable::giTensor
+        integer(ip),dimension(:),allocatable::  glvl
+        real(rp),dimension(:,:),allocatable::   gx
+        real(rp),dimension(:),allocatable::     gw
+        integer(ip)::                           minlvl,ilvl,h,t,npTensor,i,j,ipSg
+        logical(lp)::                           more
+        real(rp)::                              coef
             
-        
-        
-        
-            call disableprogram
-            x = 0._rp
-            w = 0._rp
-        
+            w = 0._rp; ipSg = 0
+            minlvl = max(0 , maxlvl + 1 - dim)
+            
+            !--
+            do ilvl = merge(minlvl,0,dim==1),maxlvl
+                more=.false.; h=0; t=0
+                
+                !sum(lvl_d) = ilvl and do recycle, range [0:ilvl]
+                do; call compositionNext(ilvl,dim,lvl_d,more,h,t)
+                
+                    np_d = NpAtLevelOpen(lvl_d)
+                    gbase = pidb2(np_d-1)
+                    npTensor = product(np_d)
+                    allocate(giTensor(dim,npTensor), gx(dim,npTensor), gw(npTensor), glvl(npTensor))
+                    
+                    call TensorWeight(dim,np_d,rule, gw,gx)
+                    coef = merge(1._rp,-1._rp,ibits(maxlvl-ilvl,0,1)==0) * binomialCoef(dim-1,maxlvl-ilvl)
+                    
+                    !index from(-M,M); M = (np_d(d)-1)/2
+                    call TensorGridIndexOwn(dim,np_d, giTensor)
+                    
+                    !determine each first level(norm 1) the point appearance, glvl(i) = norm(lvl(giTensor(i)),1)
+                    call TensorLevelIndexOwn(dim,maxlvl,ilvl,lvl_d,gbase,giTensor, glvl)
+                    
+                    do i=1,npTensor
+                        if(glvl(i)==ilvl) then
+                            ipSg = ipSg + 1
+                            x(:,ipSg) = gx(:,i)
+                            if(minlvl<=ilvl) w(ipSg) = coef*gw(i)
+                        elseif(minlvl<=ilvl) then
+                            do j=1,ipSg
+                                if(all(x(:,j)==gx(:,i))) exit
+                            enddo                            
+                            w(j) = w(j) + coef*gw(i)
+                        endif
+                    enddo
+
+                    deallocate(giTensor, gx, gw, glvl)                    
+                    if(.not.more) exit
+                enddo
+            enddo
+            
         end subroutine OpenWeaklyNest
+        
+        !--
+        subroutine TensorGridIndexOwn(dim,np_d,giTensor)
+        integer(ip),intent(in)::                dim
+        integer(ip),dimension(:),intent(in)::   np_d        !np in each dimension
+        integer(ip),dimension(:,:),intent(out)::giTensor
+        integer(ip)::                           i
+        logical(lp)::                           more
+        integer(ip),dimension(dim)::            a
+            more = .false.
+            !traverse the tensor grid by first dimension
+            do i=1,size(giTensor,dim=2) ! = product(np_d) = npTensor
+                !cycle to (0,0,...0) -> (np_d(1)-1,np_d(2)-1,...,np_d(d)-1) | total npTensor
+                call colexNext(dim,np_d,a,more)
+                !from (0:np_d(d)-1) to (-M,M) where M = (np_d(d) -1)/2, np_d(i) is always odd
+                giTensor(:,i) = a - ishft(np_d - 1, -1)
+            enddo
+        end subroutine TensorGridIndexOwn
+        !--
+        subroutine TensorLevelIndexOwn(dim,maxlvl,ilvl,lvl_d,gbase,giTensor, glvl)
+        integer(ip),intent(in)::                    dim,maxlvl,ilvl
+        integer(ip),dimension(:),intent(in)::       lvl_d,gbase
+        integer(ip),dimension(:,:),intent(in)::     giTensor
+        integer(ip),dimension(:),intent(out)::      glvl
+        integer(ip)::                               minlvl,i,j
+
+            minlvl = merge(maxlvl,0,dim==1)
+            do i = 1,size(giTensor,dim=2)
+                glvl(i) = max(ilvl,minlvl)
+                do j=1,dim
+                    !if giTenor==0 the lvl should decrease due to index=0 point come from lvl=0
+                    if(giTensor(j,i)==0) glvl(i) = max(glvl(i) - gbase(j), minlvl)
+                enddo
+            enddo
+        
+        end subroutine TensorLevelIndexOwn
         
     end subroutine sparseGrid
  
@@ -1226,39 +1311,47 @@ contains
     end function NpAtLevelClose
     
     !-----------------------------------------------------------------------------
-    subroutine TensorWeight(dim,np_d,QuadratureRule,gw)
+    subroutine TensorWeight(dim,np_d,rule, gw,gx)
     integer(ip),intent(in)::                dim
     integer(ip),dimension(:),intent(in)::   np_d
-    character(*),intent(in)::               QuadratureRule
+    character(*),intent(in)::               rule
     real(rp),dimension(:),intent(out)::     gw
+    real(rp),dimension(:,:),intent(out),optional::  gx
     real(rp),dimension(:),allocatable::     x,w
     integer(ip)::                           id
-    character(len(QuadratureRule))::        rule
     integer(ip)::                           contig,skip,rep,start,j,k
-        
-        rule = quadratureRule
-        call lowerstring(rule)
         
         gw = 1._rp
         contig = 1; skip = 1; rep = size(gw)
         do id = 1,dim
             allocate(x(np_d(id)),w(np_d(id)))
-            if(rule=='cc'.or.rule=='clenshawcurtis') then
+            
+            if(rule=='cc') then
                 call ClenshawCurtis(x,w)
+            elseif(rule=='gh') then
+                call GaussHermite(x,w)
+            elseif(rule=='gl') then
+                call GaussLegendre(x,w)
             else
                 call disableprogram
             endif
+            
             !prod(id,np_d(id),w,dim,npTensor,gw) | size(w) = np_id(id)
             rep = rep / np_d(id)
             skip = skip * np_d(id)
             do j=1,np_d(id)
                 start = 1 + (j-1)*contig
                 do k=1,rep
+                    !gw(np1,np2,np3...npn), dim=k:
+                    !w(j) multiple all points(np1*np2..np(k-1)), for(j=1,npk), repeats times (np(k+1)*,...*npn)
+                    !skip (np1*np2..npk)
                     gw(start:start+contig-1) = gw(start:start+contig-1) * w(j)
+                    if(present(gx)) gx(id,start:start+contig-1)  = x(j)
                     start = start + skip
                 enddo
             enddo
             contig = contig * np_d(id)
+            
             deallocate(x,w)
         enddo
         

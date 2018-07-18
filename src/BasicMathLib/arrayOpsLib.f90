@@ -5,9 +5,15 @@ implicit none
     private
     public:: operator(.ip.),operator(.op.),operator(.cpv.),operator(.cps.)
     public:: operator(-),operator(+),operator(*),operator(.eqvl.)
-    public:: magSqr,mag,angle,normal,para,orth,norm,polyval
-    public:: trace,diag,sort,cumprod
+    public:: magSqr, mag, angle, normal, para, orth, rot2, norm, polyval
+    public:: trace, diag, sort, cumprod, trans, repmat
+    
+    !some special array structure
     public:: compositionNext,colexNext
+    
+    !compress stored row
+    public:: diagIxCsr
+    
     
 !---------------------------------------------
     interface operator(*)
@@ -49,15 +55,33 @@ implicit none
         procedure:: integeriseq
     end interface
     
+    interface rot2
+        procedure:: rot2Cs
+        procedure:: rot2Theta
+    end interface rot2
+    
     interface diag
         procedure:: diagCreateMatrix
         procedure:: diagExtractElement
-    end interface
+    end interface diag
     
     interface sort
         procedure:: sortOneDimension
         procedure:: sortTwoDimension
-    end interface
+    end interface sort
+    
+    interface trans
+        procedure:: trans_rvm
+        procedure:: trans_ivm
+        procedure:: trans_rmm
+    end interface trans
+    
+    interface repmat
+        procedure:: repmat_rv
+        procedure:: repmat_iv
+        procedure:: repmat_rm
+        procedure:: repmat_im
+    end interface repmat
     
 contains
 
@@ -95,6 +119,23 @@ contains
         orth = v1 - para(v1,v2)
     end function orth
     
+    !cs means cos and sin, v is the vector
+    pure function rot2Cs(cs,v) result(r)
+    real(rp),dimension(2),intent(in)::  cs,v
+    real(rp),dimension(2)::             r
+        r(1) = cs(1)*v(1) - cs(2)*v(2)
+        r(2) = cs(2)*v(1) + cs(1)*v(2)
+    end function rot2Cs
+    
+    pure function rot2Theta(theta,v) result(r)
+    real(rp),intent(in)::               theta
+    real(rp),dimension(2),intent(in)::  v
+    real(rp),dimension(2)::             r
+        r(1) = cos(theta)*v(1) - sin(theta)*v(2)
+        r(2) = sin(theta)*v(1) + cos(theta)*v(2)
+    end function rot2Theta
+    
+    
     !Lp norm
     pure real(rp) function norm(v,p)
     real(rp),dimension(:),intent(in)::  v
@@ -114,22 +155,28 @@ contains
     end function norm
     
     !---------
-    pure real(rp) function polyval(v,x)
-    real(rp),dimension(0:),intent(in):: v
+    pure real(rp) function polyval(a,x)
+    real(rp),dimension(0:),intent(in):: a
     real(rp),intent(in)::               x
     integer(ip)::                       i
         polyval = 0._rp
-        do i=0,ubound(v,dim=1)
-            polyval = polyval + v(i) * x**i 
-        enddo
+        if(x>1._rp) then
+            do i=0,ubound(a,1)
+                polyval = polyval + a(i) * x**i 
+            enddo
+        else
+            do i=ubound(a,1),0,-1
+                polyval = polyval + a(i) * x**i 
+            enddo
+        endif
     end function polyval
     
     !---------
     pure function diagCreateMatrix(m,k)
-    real(rp),dimension(:),intent(in)::                    m
-    integer(ip),intent(in)::                              k
-    real(rp),dimension(:,:),allocatable::                 diagCreateMatrix
-    integer(ip)::                                         i,j,n,p
+    real(rp),dimension(:),intent(in)::          m
+    integer(ip),intent(in)::                    k
+    real(rp),dimension(:,:),allocatable::       diagCreateMatrix
+    integer(ip)::                               i,j,n,p
         p = abs(k); n = size(m)
         allocate(diagCreateMatrix(p+n,p+n))
         diagCreateMatrix = 0._rp
@@ -147,7 +194,8 @@ contains
     !--
     pure function diagExtractElement(m)
     real(rp),dimension(:,:),intent(in)::    m
-    real(rp),dimension(min(size(m,dim=1),size(m,dim=2))):: diagExtractElement
+    real(rp),dimension(min(size(m,dim=1),&
+    size(m,dim=2)))::                       diagExtractElement
     integer(ip)::                           i
         forall(i=1:size(diagExtractElement)) diagExtractElement(i)=m(i,i)
     end function diagExtractElement
@@ -201,6 +249,89 @@ contains
             cumprod(i) = cumprod(i-1)*x(i)  
         end do   
     end function cumprod
+    
+    !transpose matrix
+    pure function trans_ivm(v) result(mt)
+    integer(ip),dimension(:),intent(in)::v
+    integer(ip),dimension(1,size(v))::  mt
+        mt(1,:) = v
+    end function trans_ivm
+    !--
+    pure function trans_rvm(v) result(mt)
+    real(rp),dimension(:),intent(in)::  v
+    real(rp),dimension(1,size(v))::     mt
+        mt(1,:) = v
+    end function trans_rvm
+    !--
+    pure function trans_rmm(m) result(mt)
+    real(rp),dimension(:,:),intent(in):: m
+    real(rp),dimension(size(m,2),size(m,1)):: mt
+        mt = transpose(m)
+    end function trans_rmm
+    
+    !----------------------------------------------
+    pure subroutine repmat_rv(v,m,n,rep)
+    real(rp),dimension(:),intent(in)::                  v
+    integer(ip),intent(in)::                            m,n
+    real(rp),dimension(:,:),allocatable,intent(out)::   rep
+    integer(ip)::                                       i,j,di,dj
+        allocate(rep(m*size(v),n))
+        do j=1,n
+            dj = j-1
+            do i=1,m
+                di = (i-1) * size(v)
+                rep(di+1:di+size(v),dj+1) = v
+            enddo
+        enddo
+    end subroutine repmat_rv
+    !--
+    pure subroutine repmat_rm(mat,m,n,rep)
+    real(rp),dimension(:,:),intent(in)::    mat
+    integer(ip),intent(in)::                m,n
+    real(rp),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                           i,j,di,dj,mm,mn
+        mm = size(mat,1); mn = size(mat,2)
+        allocate(rep(m*mm,n*mn))
+        do j=1,n
+            dj = (j-1) * mn
+            do i=1,m
+                di = (i-1) * mm
+                rep(di+1:di+mm,dj+1:dj+mn) = mat
+            enddo
+        enddo
+    end subroutine repmat_rm
+    !--
+    pure subroutine repmat_iv(v,m,n,rep)
+    integer(ip),dimension(:),intent(in)::               v
+    integer(ip),intent(in)::                            m,n
+    integer(ip),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                                       i,j,di,dj
+        allocate(rep(m*size(v),n))
+        do j=1,n
+            dj = j-1
+            do i=1,m
+                di = (i-1) * size(v)
+                rep(di+1:di+size(v),dj+1) = v
+            enddo
+        enddo
+    end subroutine repmat_iv
+    !--
+    pure subroutine repmat_im(mat,m,n,rep)
+    integer(ip),dimension(:,:),intent(in):: mat
+    integer(ip),intent(in)::                m,n
+    integer(ip),dimension(:,:),allocatable,intent(out)::rep
+    integer(ip)::                           i,j,di,dj,mm,mn
+        mm = size(mat,1); mn = size(mat,2)
+        allocate(rep(m*mm,n*mn))
+        do j=1,n
+            dj = (j-1) * mn
+            do i=1,m
+                di = (i-1) * mm
+                rep(di+1:di+mm,dj+1:dj+mn) = mat
+            enddo
+        enddo
+    end subroutine repmat_im
+    
     
     !computes the compositions of the integer n into k parts.
     !like n=2, k=2: (2,0);(1,1);(0,2) | totally 3 kinds, and this subroutine accomplish this order for next
@@ -263,6 +394,24 @@ contains
             more = .false.
         endif
     end subroutine colexNext
+    
+    
+    
+!------------------------------------------------------------------
+    !given csr sparse matrix, give diag index of ia(j)-ia(j+1) for each row
+    !ia(n+1), ja(nnz), da(n)
+    !tip: ia(1) = 1, ia(n+1) = nnz + 1
+    pure subroutine diagIxCsr(ia,ja,da)
+    integer(ip),dimension(:),intent(in)::   ia,ja
+    integer(ip),dimension(:),intent(out)::  da
+    integer(ip)::                           i,j
+        da = -1
+        do j=1,size(da)
+            do i=ia(j),ia(j+1) - 1
+                if(ja(i)==j) da(j) = i
+            enddo
+        enddo
+    end subroutine diagIxCsr
     
     
     

@@ -85,19 +85,19 @@ implicit none
     end interface integrate   
     !---------------------------
     interface HermitePolynomial
-        procedure:: HermitePhysicistsPolynomial
+        procedure:: HermiteProbPolynomial
     end interface HermitePolynomial
     !---------------------------
     interface HermitePolynomialSet
-        procedure:: HermitePhysicistsPolynomialSet
+        procedure:: HermiteProbPolynomialSet
     end interface HermitePolynomialSet
     !---------------------------
     interface normalHermitePolynomial
-        procedure:: normalHermitePhysicistsPolynomial
+        procedure:: normalHermiteProbPolynomial
     end interface normalHermitePolynomial
     !---------------------------
     interface normalHermitePolynomialSet
-        procedure:: normalHermitePhysicistsPolynomialSet
+        procedure:: normalHermiteProbPolynomialSet
     end interface normalHermitePolynomialSet
     !---------------------------
 contains
@@ -176,7 +176,8 @@ contains
                 exit
             endif
         enddo
-        allocate(cp%coef_(0:n),source=this%coef_(0:n))
+        !source = x(0:n) => lbound = 1; so should scale the cp%coef_ lbound
+        allocate(cp%coef_(0:n) , source=this%coef_(0:n))
     end function contract
     
     !--
@@ -288,7 +289,7 @@ contains
     pure subroutine paEq(lhs,rhs)
     class(polynomial),intent(out)::     lhs
     real(rp),dimension(0:),intent(in):: rhs
-        allocate(lhs%coef_(0:ubound(rhs,dim=1)),source=rhs)
+        allocate(lhs%coef_,source=rhs)
     end subroutine paEq
     !--
     elemental type(polynomial) function psPlus(lhs,rhs) result(p)
@@ -321,7 +322,7 @@ contains
     !--
     elemental type(polynomial) function negativePoly(rhs) result(p)
     class(polynomial),intent(in)::      rhs
-        allocate(p%coef_(0:ubound(rhs%coef_,dim=1)),source=rhs%coef_)
+        allocate(p%coef_,source=rhs%coef_)
         p%coef_(:) = - p%coef_(:)
     end function negativePoly
     !--
@@ -347,7 +348,7 @@ contains
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
         if(rhs/=zero) then
-            allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
+            allocate(p%coef_,source=lhs%coef_)
             p%coef_ = rhs * p%coef_
         else
             p = zeroPolynomial()
@@ -363,7 +364,7 @@ contains
     elemental type(polynomial) function psDivide(lhs,rhs) result(p)
     class(polynomial),intent(in)::      lhs
     real(rp),intent(in)::               rhs
-        allocate(p%coef_(0:ubound(lhs%coef_,dim=1)),source=lhs%coef_)
+        allocate(p%coef_,source=lhs%coef_)
         p%coef_ = p%coef_ / rhs
     end function psDivide
     !--
@@ -535,7 +536,8 @@ contains
     
     !---------------------
     !H_n = 2x H_{n-1} - 2(n-1) H_{n-2}
-    elemental type(polynomial) function HermitePhysicistsPolynomial(n) result(poly)
+    !for w(x) = e^{-x^2} | <Hi,Hi>=sqrt(pi) 2^n n!
+    elemental type(polynomial) function HermitePhysPolynomial(n) result(poly)
     integer(ip),intent(in)::            n
     type(polynomial)::                  tm2,tm1,x
     integer(ip)::                       i
@@ -553,10 +555,10 @@ contains
                 tm1 = poly
             enddo
         endif
-    end function HermitePhysicistsPolynomial
+    end function HermitePhysPolynomial
     
     !--
-    pure function HermitePhysicistsPolynomialSet(n) result(poly)
+    pure function HermitePhysPolynomialSet(n) result(poly)
     integer(ip),intent(in)::            n
     type(polynomial),dimension(0:n)::   poly
     type(polynomial)::                  x
@@ -574,28 +576,29 @@ contains
                 poly(i) = 2._rp* x * poly(i-1) - 2._rp*(i - 1._rp) * poly(i-2)
             enddo
         endif
-    end function HermitePhysicistsPolynomialSet
+    end function HermitePhysPolynomialSet
     
     !--
-    elemental type(polynomial) function normalHermitePhysicistsPolynomial(n) result(poly)
+    elemental type(polynomial) function normalHermitePhysPolynomial(n) result(poly)
     integer(ip),intent(in)::                n
-        poly = ( 1._rp / sqrt( spi * 2**n * factorial(n)) ) * HermitePhysicistsPolynomial(n)
-    end function normalHermitePhysicistsPolynomial
+        poly = (1._rp / sqrt( spi * 2**n * factorial(n))) * HermitePhysPolynomial(n)
+    end function normalHermitePhysPolynomial
     
     !--
-    pure function normalHermitePhysicistsPolynomialSet(n) result(poly)
+    pure function normalHermitePhysPolynomialSet(n) result(poly)
     integer(ip),intent(in)::                n
     type(polynomial),dimension(0:n)::       poly
     integer(ip)::                           i
-        poly = HermitePhysicistsPolynomialSet(n)
+        poly = HermitePhysPolynomialSet(n)
         do i=0,n
-            poly(i) = ( 1._rp / sqrt( spi * 2**n * factorial(n)) ) * poly(i)
+            poly(i) = (1._rp / sqrt( spi * 2**n * factorial(n))) * poly(i)
         enddo
-    end function normalHermitePhysicistsPolynomialSet
+    end function normalHermitePhysPolynomialSet
     
      !---------------------
     !H_n = x H_{n-1} - (n-1) H_{n-2}
-    elemental type(polynomial) function HermiteProbabilistsPolynomial(n) result(poly)
+    !for w(x) = e^{-x^2/2} | <Hi,Hi>=sqrt(2*pi) n!
+    elemental type(polynomial) function HermiteProbPolynomial(n) result(poly)
     integer(ip),intent(in)::            n
     type(polynomial)::                  tm2,tm1,x
     integer(ip)::                       i
@@ -613,10 +616,10 @@ contains
                 tm1 = poly
             enddo
         endif
-    end function HermiteProbabilistsPolynomial
+    end function HermiteProbPolynomial
     
     !--
-    pure function HermiteProbabilistsPolynomialSet(n) result(poly)
+    pure function HermiteProbPolynomialSet(n) result(poly)
     integer(ip),intent(in)::            n
     type(polynomial),dimension(0:n)::   poly
     type(polynomial)::                  x
@@ -634,24 +637,24 @@ contains
                 poly(i) = x * poly(i-1) - (i - 1._rp) * poly(i-2)
             enddo
         endif
-    end function HermiteProbabilistsPolynomialSet
+    end function HermiteProbPolynomialSet
     
     !--
-    elemental type(polynomial) function normalHermiteProbabilistsPolynomial(n) result(poly)
+    elemental type(polynomial) function normalHermiteProbPolynomial(n) result(poly)
     integer(ip),intent(in)::                n
-        poly = ( 1._rp / sqrt( sqrt(2._rp) * spi * factorial(n)) ) * HermiteProbabilistsPolynomial(n)
-    end function normalHermiteProbabilistsPolynomial
+        poly = (1._rp / sqrt(sqrt(2._rp) * spi * factorial(n))) * HermiteProbPolynomial(n)
+    end function normalHermiteProbPolynomial
     
     !--
-    pure function normalHermiteProbabilistsPolynomialSet(n) result(poly)
+    pure function normalHermiteProbPolynomialSet(n) result(poly)
     integer(ip),intent(in)::                n
     type(polynomial),dimension(0:n)::       poly
     integer(ip)::                           i
-        poly = HermiteProbabilistsPolynomialSet(n)
+        poly = HermiteProbPolynomialSet(n)
         do i=0,n
-            poly(i) = ( 1._rp / sqrt( sqrt(2._rp) * spi * factorial(n)) ) * poly(i)
+            poly(i) = (1._rp / sqrt(sqrt(2._rp) * spi * factorial(n))) * poly(i)
         enddo
-    end function normalHermiteProbabilistsPolynomialSet
+    end function normalHermiteProbPolynomialSet
     
     
 end module polynomial_
